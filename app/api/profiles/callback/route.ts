@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createUser, getUserByWallet, createOrUpdateProfile } from '../../../../lib/database';
 
 export async function POST(request: NextRequest) {
   try {
@@ -8,27 +9,56 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     console.log('📊 Profile data received:', body);
     
-    // Here you would typically:
-    // 1. Validate the data
-    // 2. Store it in your database
-    // 3. Send confirmation emails
-    // 4. Update user records
-    
-    // For now, we'll just log it and return success
-    console.log('✅ Profile data processed successfully');
+    // Extract data from Base profiles callback
+    const { 
+      walletAddress, 
+      email, 
+      physicalAddress,
+      phone,
+      name 
+    } = body;
+
+    if (!walletAddress) {
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Wallet address is required',
+        timestamp: new Date().toISOString()
+      }, { status: 400 });
+    }
+
+    // Get or create user
+    let user = await getUserByWallet(walletAddress);
+    if (!user) {
+      user = await createUser(walletAddress, email);
+      console.log(`👤 Created new user for wallet: ${walletAddress}`);
+    } else {
+      console.log(`👤 Found existing user for wallet: ${walletAddress}`);
+    }
+
+    // Create or update profile
+    const profile = await createOrUpdateProfile(user.id, {
+      physical_address: physicalAddress,
+      phone: phone,
+      name: name
+    });
+
+    console.log('✅ Profile data saved to database successfully');
     
     return NextResponse.json({ 
       success: true, 
-      message: 'Profile data received and processed',
+      message: 'Profile data received and stored in database',
+      userId: user.id,
+      profileId: profile.id,
       timestamp: new Date().toISOString()
     }, { status: 200 });
     
-  } catch (error) {
+  } catch (error: any) {
     console.error('🚨 Error processing profile callback:', error);
     
     return NextResponse.json({ 
       success: false, 
       error: 'Failed to process profile data',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined,
       timestamp: new Date().toISOString()
     }, { status: 500 });
   }
