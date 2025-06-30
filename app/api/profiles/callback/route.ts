@@ -52,13 +52,13 @@ export async function POST(request: NextRequest) {
       timestamp: new Date().toISOString()
     }, { status: 200 });
     
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('🚨 Error processing profile callback:', error);
     
     return NextResponse.json({ 
       success: false, 
       error: 'Failed to process profile data',
-      details: process.env.NODE_ENV === 'development' ? error.message : undefined,
+      details: process.env.NODE_ENV === 'development' ? (error as Error).message : undefined,
       timestamp: new Date().toISOString()
     }, { status: 500 });
   }

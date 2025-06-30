@@ -35,9 +35,29 @@ export default function App() {
   const [currentImageIndex, setCurrentImageIndex] = useState<{[key: string]: number}>({});
   const [activeFilter, setActiveFilter] = useState<string>('ALL');
   const [modalProduct, setModalProduct] = useState<ProductItem | null>(null);
+  const [isHeaderVisible, setIsHeaderVisible] = useState(true);
+  const [lastScrollY, setLastScrollY] = useState(0);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [currentHeroIndex, setCurrentHeroIndex] = useState(0);
 
   const { sendCalls, data, error, isPending } = useSendCalls();
   const { isConnected } = useAccount();
+
+  const heroImages = [
+    {
+      src: "/hero_image.png",
+      alt: "Gutter Fairy - Sustainable Vintage Fashion"
+    },
+    {
+      src: "/Hero_image2.png", 
+      alt: "Gutter Fairy - Curated Vintage Collection"
+    },
+    {
+      src: "/hero_image3.png",
+      alt: "Gutter Fairy - Unique Vintage Finds"
+    }
+  ];
 
   const products: ProductItem[] = useMemo(() => [
     { 
@@ -119,21 +139,134 @@ export default function App() {
     }
   ], []);
 
-  // Filter products based on active filter
+  // Filter products based on active filter (only one filter active at a time)
   const filteredProducts = activeFilter === 'ALL' 
     ? products 
     : activeFilter === 'VINTAGE COLLECTION'
     ? products.filter(product => product.name.toLowerCase().includes('vintage'))
     : products.filter(product => product.category === activeFilter);
 
+  // Pagination calculations
+  const totalItems = filteredProducts.length;
+  const totalPages = Math.ceil(totalItems / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const currentProducts = filteredProducts.slice(startIndex, endIndex);
+
+  // Get product count for each filter
+  const getProductCount = (filter: string) => {
+    if (filter === 'ALL') return products.length;
+    if (filter === 'VINTAGE COLLECTION') return products.filter(product => product.name.toLowerCase().includes('vintage')).length;
+    return products.filter(product => product.category === filter).length;
+  };
+
+  // Reset to first page when filter changes
+  const handleFilterChange = (filter: string) => {
+    setActiveFilter(filter);
+    setCurrentPage(1);
+    // Scroll to products section
+    document.getElementById('products')?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  // Handle items per page change
+  const handleItemsPerPageChange = (newItemsPerPage: number) => {
+    setItemsPerPage(newItemsPerPage);
+    setCurrentPage(1);
+    // Scroll to products section
+    document.getElementById('products')?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  // Handle page change
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+    // Scroll to products section
+    document.getElementById('products')?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  // Hero carousel navigation with seamless infinite loop
+  const goToPreviousHero = () => {
+    setCurrentHeroIndex((prevIndex) => prevIndex - 1);
+  };
+
+  const goToNextHero = () => {
+    setCurrentHeroIndex((prevIndex) => prevIndex + 1);
+  };
+
+  const goToHero = (index: number) => {
+    setCurrentHeroIndex(index);
+  };
+
+  // Hero carousel auto-rotation with seamless loop
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentHeroIndex((prevIndex) => prevIndex + 1);
+    }, 5000); // Change image every 5 seconds
+
+    return () => clearInterval(interval);
+  }, []);
+
+  // Handle seamless loop transitions
+  useEffect(() => {
+    if (currentHeroIndex === -1) {
+      // Jump from clone of last image to real last image instantly
+      const timeoutId = setTimeout(() => {
+        setCurrentHeroIndex(heroImages.length - 1);
+      }, 50);
+      return () => clearTimeout(timeoutId);
+    } else if (currentHeroIndex === heroImages.length) {
+      // Jump from clone of first image to real first image instantly
+      const timeoutId = setTimeout(() => {
+        setCurrentHeroIndex(0);
+      }, 50);
+      return () => clearTimeout(timeoutId);
+    }
+  }, [currentHeroIndex, heroImages.length]);
+
   // Preload images for better performance
   useEffect(() => {
     const imageUrls = products.flatMap(product => product.images);
-    imageUrls.forEach(url => {
+    // Also preload hero images
+    const heroUrls = heroImages.map(hero => hero.src);
+    [...imageUrls, ...heroUrls].forEach(url => {
       const img = new Image();
       img.src = url;
     });
-  }, [products]);
+  }, [products, heroImages]);
+
+  // Handle scroll-based header visibility
+  useEffect(() => {
+    const handleScroll = () => {
+      const currentScrollY = window.scrollY;
+      
+      // Show header when at top of page
+      if (currentScrollY < 10) {
+        setIsHeaderVisible(true);
+      }
+      // Hide header when scrolling down, show when scrolling up
+      else if (currentScrollY > lastScrollY && currentScrollY > 100) {
+        setIsHeaderVisible(false);
+      } else if (currentScrollY < lastScrollY) {
+        setIsHeaderVisible(true);
+      }
+      
+      setLastScrollY(currentScrollY);
+    };
+
+    // Throttle scroll events for better performance
+    let ticking = false;
+    const throttledHandleScroll = () => {
+      if (!ticking) {
+        requestAnimationFrame(() => {
+          handleScroll();
+          ticking = false;
+        });
+        ticking = true;
+      }
+    };
+
+    window.addEventListener('scroll', throttledHandleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', throttledHandleScroll);
+  }, [lastScrollY]);
 
   // Improved callback URL function
   function getCallbackURL() {
@@ -234,58 +367,60 @@ export default function App() {
 
     return (
     <div className="min-h-screen relative overflow-hidden">
-      {/* Animated Background Particles */}
-      <div className="fixed inset-0 pointer-events-none z-0">
-        <div className="absolute top-20 left-10 w-2 h-2 bg-teal-400 rounded-full animate-ping opacity-70"></div>
-        <div className="absolute top-40 right-20 w-3 h-3 bg-blue-400 rounded-full animate-pulse opacity-60" style={{animationDelay: '1s'}}></div>
-        <div className="absolute bottom-40 left-1/4 w-1 h-1 bg-purple-400 rounded-full animate-ping opacity-80" style={{animationDelay: '2s'}}></div>
-        <div className="absolute top-1/3 right-1/3 w-2 h-2 bg-green-400 rounded-full animate-pulse opacity-50" style={{animationDelay: '3s'}}></div>
-        <div className="absolute bottom-20 right-10 w-3 h-3 bg-yellow-400 rounded-full animate-ping opacity-60" style={{animationDelay: '0.5s'}}></div>
-      </div>
-
-      {/* Premium Glassmorphism Header */}
-      <header className="fixed top-0 left-0 right-0 z-50 backdrop-blur-xl bg-gradient-to-r from-blue-500/5 via-teal-500/5 via-blue-500/5 to-emerald-500/5 border-b border-white/10 shadow-xl">
-        <div className="max-w-7xl mx-auto px-4 lg:px-8">
+      {/* Clean Premium Header */}
+      <header 
+        className={`fixed left-0 right-0 z-50 backdrop-blur-xl border-b border-white/20 shadow-lg transition-transform duration-300 ease-in-out ${
+          isHeaderVisible ? 'top-0 translate-y-0' : '-top-24 -translate-y-full'
+        }`}
+        style={{
+          background: 'rgba(255, 255, 255, 0.1)'
+        }}
+      >
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-10">
           <div className="flex justify-between items-center h-16 lg:h-20">
-            {/* Social Media Links */}
-            <div className="flex items-center space-x-4">
-              <a href="https://www.instagram.com/gutterfairythrift/" target="_blank" rel="noopener noreferrer" className="w-8 h-8 lg:w-10 lg:h-10 rounded-full bg-white/90 backdrop-blur-xl border border-white/30 flex items-center justify-center hover:bg-white transition-all duration-300 cursor-pointer group hover:scale-110 shadow-lg hover:shadow-xl">
-                <span className="text-xs lg:text-sm font-bold text-gray-900 group-hover:scale-110 transition-transform duration-300">IG</span>
-              </a>
-              <a href="https://www.tiktok.com/@gutterfairythrift" target="_blank" rel="noopener noreferrer" className="w-8 h-8 lg:w-10 lg:h-10 rounded-full bg-white/90 backdrop-blur-xl border border-white/30 flex items-center justify-center hover:bg-white transition-all duration-300 cursor-pointer group hover:scale-110 shadow-lg hover:shadow-xl">
-                <span className="text-xs lg:text-sm font-bold text-gray-900 group-hover:scale-110 transition-transform duration-300">TT</span>
-              </a>
+            {/* Brand Name */}
+            <div className="flex items-center relative">
+              <h1 className="text-lg lg:text-2xl font-black text-white tracking-wide cursor-default hover:text-teal-200 transition-colors duration-300">
+                GUTTER FAIRY
+            </h1>
             </div>
             
             <div className="wallet-container relative">
               <Wallet>
-                <ConnectWallet className="relative overflow-hidden group bg-white/90 backdrop-blur-xl text-gray-900 px-4 lg:px-8 py-2 lg:py-3 font-bold tracking-wide transition-all duration-500 hover:scale-105 hover:shadow-2xl rounded-full border border-white/30 hover:border-pink-300 hover:bg-white/95 text-sm lg:text-base">
-                  <div className="absolute inset-0 bg-gradient-to-r from-pink-400/20 to-purple-400/20 opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-full"></div>
+                <ConnectWallet 
+                  className="relative overflow-hidden group bg-white/10 backdrop-blur-xl text-white px-4 lg:px-8 py-2 lg:py-3 font-bold tracking-wide transition-all duration-500 hover:scale-105 hover:shadow-2xl rounded-full border border-white/30 hover:border-white/50 hover:bg-white/20 text-sm lg:text-base"
+                  disconnectedLabel="Login"
+                >
+                  <div className="absolute inset-0 bg-gradient-to-r from-white/10 to-white/20 opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-full"></div>
                   <div className="relative z-10 flex items-center gap-2">
+                    {isConnected ? (
+                      <>
                     <Avatar className="h-4 w-4 lg:h-5 lg:w-5" />
-                    <Name className="text-gray-900 font-bold hidden sm:block" />
-                    <span className="sm:hidden text-gray-900 font-bold">WALLET</span>
-                    {/* Wallet sparkle */}
-                    <div className="w-1 h-1 bg-yellow-400 rounded-full animate-pulse opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                        <Name className="text-white font-bold hidden sm:block" />
+                        <span className="sm:hidden text-white font-bold">WALLET</span>
+                      </>
+                    ) : (
+                      <span className="text-white font-bold">Login</span>
+                    )}
                   </div>
                 </ConnectWallet>
-                <WalletDropdown className="[&>div]:!bg-white/95 [&>div]:!backdrop-blur-xl [&>div]:!border-white/20 [&>div]:!shadow-2xl [&>div]:!rounded-2xl [&>div]:!absolute [&>div]:!top-full [&>div]:!right-0 [&>div]:!mt-2 [&>div]:!min-w-[280px] [&>div]:!z-[999999] [&>div]:sm:!right-0 [&>div]:!right-4 [&>div]:!max-w-[calc(100vw-2rem)]">
-                  <Identity className="px-6 pt-4 pb-3 !bg-transparent !text-gray-900" hasCopyAddressOnClick>
+                <WalletDropdown className="[&>div]:!bg-white/95 [&>div]:!backdrop-blur-xl [&>div]:!border-white/20 [&>div]:!shadow-2xl [&>div]:!rounded-2xl [&>div]:!absolute [&>div]:!top-full [&>div]:!right-0 [&>div]:!mt-2 [&>div]:!min-w-[280px] [&>div]:!z-[999999] [&>div]:sm:!right-0 [&>div]:!right-4 [&>div]:!max-w-[calc(100vw-2rem)] [&>div]:!text-gray-800 [&_*]:!text-gray-800 [&_span]:!text-gray-800 [&_button]:!text-gray-800 [&_a]:!text-gray-800 [&_div]:!text-gray-800">
+                  <Identity className="px-6 pt-4 pb-3 !bg-transparent !text-gray-800 [&_*]:!text-gray-800 [&_span]:!text-gray-800 [&_div]:!text-gray-800 [&_button]:!text-gray-800" hasCopyAddressOnClick>
                     <Avatar />
-                    <Name className="!text-gray-900" />
-                    <Address className="!text-gray-700" />
-                    <EthBalance className="!text-gray-700" />
+                    <Name className="!text-gray-800 !important" />
+                    <Address className="!text-gray-800 !important" />
+                    <EthBalance className="!text-gray-800 !important" />
                   </Identity>
                   <WalletDropdownLink
                     icon="wallet"
                     href="https://keys.coinbase.com"
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="hover:bg-gray-50/80 text-gray-900 font-medium !text-gray-900 !bg-transparent hover:!bg-gray-50/80 rounded-xl mx-2 transition-all duration-300"
+                    className="hover:bg-teal-100/80 !text-gray-800 font-medium !bg-transparent hover:!bg-teal-100/80 rounded-xl mx-2 transition-all duration-300 [&_*]:!text-gray-800 [&_span]:!text-gray-800 [&_div]:!text-gray-800"
                   >
                     WALLET
                   </WalletDropdownLink>
-                  <WalletDropdownDisconnect className="!text-gray-900 !bg-transparent hover:!bg-red-50/80 rounded-xl mx-2 transition-all duration-300" />
+                  <WalletDropdownDisconnect className="!text-gray-800 !bg-transparent hover:!bg-red-50/80 rounded-xl mx-2 transition-all duration-300 [&_*]:!text-gray-800 [&_span]:!text-gray-800 [&_div]:!text-gray-800 [&_button]:!text-gray-800" />
                 </WalletDropdown>
               </Wallet>
             </div>
@@ -293,347 +428,178 @@ export default function App() {
           </div>
         </header>
 
-      {/* Hero Section - Ultra Premium with Enhanced Gradients */}
-      <section className="min-h-screen bg-gradient-to-br from-blue-200 via-blue-300 via-teal-300 via-teal-200 via-blue-300 via-teal-300 to-emerald-300 flex items-start justify-center pt-20 md:items-center md:pt-0 relative overflow-hidden">
-        {/* Enhanced Floating Glassmorphism Orbs */}
-        <div className="absolute top-20 left-20 w-32 h-32 bg-white/20 backdrop-blur-xl rounded-full animate-pulse opacity-60">
-          <div className="absolute inset-2 bg-gradient-to-br from-pink-300/30 to-purple-300/30 rounded-full"></div>
-        </div>
-        <div className="absolute bottom-32 right-20 w-48 h-48 bg-white/10 backdrop-blur-xl rounded-full animate-bounce opacity-40" style={{animationDuration: '3s'}}>
-          <div className="absolute inset-4 bg-gradient-to-br from-blue-300/30 to-teal-300/30 rounded-full"></div>
-        </div>
-        <div className="absolute top-1/3 right-1/4 w-24 h-24 bg-white/15 backdrop-blur-xl rounded-full animate-ping opacity-50">
-          <div className="absolute inset-1 bg-gradient-to-br from-purple-300/30 to-pink-300/30 rounded-full"></div>
-        </div>
-        
-        {/* Enhanced Premium Diagonal Transition */}
-        <div className="absolute bottom-0 left-0 right-0 h-40 bg-gradient-to-br from-blue-300 via-blue-200 via-indigo-300 to-purple-300 transform rotate-1 origin-bottom-left scale-110 shadow-2xl"></div>
-        
-        <div className="relative z-10 text-center px-4 sm:px-6 md:px-8 lg:px-12 max-w-7xl mx-auto flex flex-col justify-center items-center h-full lg:pt-28 xl:pt-32">
-          {/* Hero Copy Above Carousel - Kawaii & Ethereal */}
-          <div className="mb-8 relative">
-            <h1 className="text-2xl sm:text-3xl md:text-6xl lg:text-7xl font-black text-white mb-4 tracking-wide leading-tight relative group cursor-default">
-              {/* Ethereal glow background */}
-                              <div className="absolute inset-0 text-2xl sm:text-3xl md:text-6xl lg:text-7xl font-black bg-gradient-to-r from-pink-300/30 via-purple-300/30 to-blue-300/30 bg-clip-text text-transparent blur-2xl -z-10">
-                CURATED CHAOS<br />SUSTAINABLY SOURCED
-                  </div>
-                  
-              {/* Main text with kawaii elements */}
-              <span className="transition-all duration-500 hover:scale-105 hover:text-pink-200 inline-block relative">
+      {/* Hero Section - Clean Modern Style */}
+      <section className="min-h-[50vh] sm:min-h-screen flex items-center justify-center relative overflow-hidden" style={{
+        background: 'linear-gradient(180deg, #67e8f9 0%, #5eead4 15%, #a7f3d0 30%, #d8b4fe 60%, #c4b5fd 80%, #ddd6fe 100%)'
+      }}>
+        <div className="relative z-10 text-center px-2 sm:px-6 md:px-8 lg:px-16 xl:px-24 max-w-7xl mx-auto pt-2 sm:pt-8 lg:pt-24">
+          {/* Clean Hero Content */}
+          <div className="mb-3 sm:mb-12 relative">
+            <h1 className="text-xl sm:text-4xl md:text-6xl lg:text-7xl font-black text-white mb-2 sm:mb-6 leading-tight cursor-default drop-shadow-lg relative">
+              <span className="transition-all duration-500 hover:text-white/90 inline-block">
                 CURATED CHAOS
-                {/* Kawaii sparkles */}
-                <span className="absolute -top-3 -right-2 text-yellow-300 text-xl animate-bounce opacity-0 group-hover:opacity-100 transition-opacity duration-300" style={{animationDelay: '0.1s'}}>✨</span>
-                <span className="absolute -top-2 left-1/3 text-pink-300 text-sm animate-pulse opacity-0 group-hover:opacity-100 transition-opacity duration-300" style={{animationDelay: '0.3s'}}>💫</span>
-                <span className="absolute -bottom-1 left-1/4 text-purple-300 text-xs animate-ping opacity-0 group-hover:opacity-100 transition-opacity duration-300" style={{animationDelay: '0.5s'}}>⭐</span>
               </span>
               <br />
-              <span className="transition-all duration-500 hover:scale-105 hover:text-emerald-200 inline-block relative">
-                SUSTAINABLY SOURCED
-                {/* More kawaii elements */}
-                <span className="absolute -top-3 -left-2 text-emerald-300 text-lg animate-bounce opacity-0 group-hover:opacity-100 transition-opacity duration-300" style={{animationDelay: '0.7s', animationDuration: '2s'}}>🌸</span>
-                <span className="absolute -top-2 right-1/4 text-blue-300 text-sm animate-pulse opacity-0 group-hover:opacity-100 transition-opacity duration-300" style={{animationDelay: '0.9s'}}>💎</span>
-                <span className="absolute -bottom-1 right-1/3 text-teal-300 text-xs animate-ping opacity-0 group-hover:opacity-100 transition-opacity duration-300" style={{animationDelay: '1.1s'}}>🦋</span>
+              <span className="transition-all duration-500 hover:text-white/90 inline-block">
+                SUSTAINABLE FASHION
               </span>
             </h1>
-            
-            {/* Floating kawaii elements around the text */}
-            <div className="absolute inset-0 pointer-events-none">
-              <div className="absolute top-0 left-1/4 text-pink-200 text-2xl animate-float opacity-70" style={{animationDelay: '0s', animationDuration: '4s'}}>☁️</div>
-              <div className="absolute top-1/3 right-1/4 text-purple-200 text-xl animate-float opacity-60" style={{animationDelay: '1s', animationDuration: '5s'}}>🌙</div>
-              <div className="absolute bottom-0 left-1/3 text-blue-200 text-lg animate-float opacity-80" style={{animationDelay: '2s', animationDuration: '3s'}}>⭐</div>
-              <div className="absolute top-1/2 left-0 text-emerald-200 text-sm animate-float opacity-50" style={{animationDelay: '1.5s', animationDuration: '6s'}}>✨</div>
-              <div className="absolute bottom-1/4 right-0 text-teal-200 text-lg animate-float opacity-70" style={{animationDelay: '2.5s', animationDuration: '4s'}}>💫</div>
+          </div>
+
+          {/* Hero Carousel */}
+          <div className="relative w-full flex justify-center">
+            <div className="relative max-w-xl sm:max-w-4xl w-full">
+              <div className="relative rounded-2xl shadow-2xl group hover:scale-105 transition-all duration-700 overflow-hidden" style={{
+                background: 'linear-gradient(145deg, #ffffff 0%, #faf5ff 50%, #f8fafc 100%)'
+              }}>
+                {/* Carousel Images - Infinite Loop */}
+                <div className="relative overflow-hidden rounded-2xl">
+                  <div 
+                    className={`flex ${
+                      currentHeroIndex === -1 || currentHeroIndex === heroImages.length
+                        ? '' 
+                        : 'transition-transform duration-500 ease-in-out'
+                    }`}
+                    style={{ transform: `translateX(-${(currentHeroIndex + 1) * 100}%)` }}
+                  >
+                    {/* Last image clone for seamless loop */}
+                    <div className="w-full flex-shrink-0">
+                      <img 
+                        src={heroImages[heroImages.length - 1].src} 
+                        alt={heroImages[heroImages.length - 1].alt} 
+                        className="w-full h-auto max-h-[200px] sm:max-h-[600px] object-cover transition-all duration-500"
+                      />
+                    </div>
+                    {/* Original images */}
+                    {heroImages.map((image, index) => (
+                      <div key={index} className="w-full flex-shrink-0">
+                        <img 
+                          src={image.src} 
+                          alt={image.alt} 
+                          className="w-full h-auto max-h-[200px] sm:max-h-[600px] object-cover transition-all duration-500"
+                        />
+                      </div>
+                    ))}
+                    {/* First image clone for seamless loop */}
+                    <div className="w-full flex-shrink-0">
+                      <img 
+                        src={heroImages[0].src} 
+                        alt={heroImages[0].alt} 
+                        className="w-full h-auto max-h-[200px] sm:max-h-[600px] object-cover transition-all duration-500"
+                      />
+                    </div>
                   </div>
                 </div>
 
-          {/* SEAMLESS Fairy Carousel - ONLY EXISTING ASSETS */}
-          <div className="overflow-hidden relative w-full mb-16">
-            <div className="flex animate-scroll-seamless space-x-6 items-center">
-              
-              {/* Existing Fairy Assets */}
-              <div className="flex-shrink-0 group cursor-pointer">
-                <div className="relative overflow-hidden rounded-3xl bg-white/10 backdrop-blur-xl border border-white/20 shadow-2xl">
-                  <img 
-                    src="/u4517633736_A_human-like_woman_based_on_the_uploaded_referenc_1a904efb-fd57-4a13-986f-8eb5953d4a0e_2.png" 
-                    alt="Gutter Fairy" 
-                    className="w-[500px] h-96 object-cover transition-all duration-500 group-hover:scale-110"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-pink-500/20 via-transparent to-purple-500/20 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-                </div>
-              </div>
-            
-              <div className="flex-shrink-0 group cursor-pointer">
-                <div className="relative overflow-hidden rounded-2xl bg-white/10 backdrop-blur-xl border border-white/20 shadow-xl">
-                  <img 
-                    src="/u4517633736_A_human-like_woman_based_on_the_uploaded_referenc_afdaa008-1b02-4516-86b4-ea7126e9e773_3 2.png" 
-                    alt="Gutter Fairy" 
-                    className="w-72 h-96 object-cover transition-all duration-500 group-hover:scale-110"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-blue-500/20 via-transparent to-teal-500/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                </div>
-              </div>
+                {/* Navigation Arrows */}
+                <button 
+                  className="absolute left-4 top-1/2 transform -translate-y-1/2 bg-white/90 backdrop-blur-xl hover:bg-white text-gray-800 w-12 h-12 lg:w-14 lg:h-14 rounded-full flex items-center justify-center shadow-2xl opacity-0 group-hover:opacity-100 transition-all duration-500 font-bold text-xl lg:text-2xl border border-white/30 hover:scale-110 z-10"
+                  onClick={goToPreviousHero}
+                >
+                  ‹
+                </button>
+                <button 
+                  className="absolute right-4 top-1/2 transform -translate-y-1/2 bg-white/90 backdrop-blur-xl hover:bg-white text-gray-800 w-12 h-12 lg:w-14 lg:h-14 rounded-full flex items-center justify-center shadow-2xl opacity-0 group-hover:opacity-100 transition-all duration-500 font-bold text-xl lg:text-2xl border border-white/30 hover:scale-110 z-10"
+                  onClick={goToNextHero}
+                >
+                  ›
+                </button>
 
-              <div className="flex-shrink-0 group cursor-pointer">
-                <div className="relative overflow-hidden rounded-3xl bg-white/10 backdrop-blur-xl border border-white/20 shadow-2xl">
-                  <img 
-                    src="/u4517633736_A_human-like_woman_based_on_the_uploaded_referenc_bee608ac-b150-4073-bb0a-c178876ac405_1.png" 
-                    alt="Gutter Fairy" 
-                    className="w-[600px] h-96 object-cover transition-all duration-500 group-hover:scale-110"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-purple-500/20 via-transparent to-pink-500/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                {/* Carousel Dots */}
+                <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 flex space-x-3 z-10">
+                  {heroImages.map((_, index) => {
+                    // Determine active state considering the infinite loop
+                    const isActive = currentHeroIndex === index || 
+                      (currentHeroIndex === -1 && index === heroImages.length - 1) ||
+                      (currentHeroIndex === heroImages.length && index === 0);
+                    
+                    return (
+                      <button
+                        key={index}
+                        className={`w-3 h-3 lg:w-4 lg:h-4 rounded-full transition-all duration-300 border-2 ${
+                          isActive
+                            ? 'bg-white border-white scale-125 shadow-lg' 
+                            : 'bg-white/50 border-white/70 hover:bg-white/75 hover:scale-110'
+                        }`}
+                        onClick={() => goToHero(index)}
+                      />
+                    );
+                  })}
                 </div>
-              </div>
 
-              <div className="flex-shrink-0 group cursor-pointer">
-                <div className="relative overflow-hidden rounded-2xl bg-white/10 backdrop-blur-xl border border-white/20 shadow-xl">
-                  <img 
-                    src="/u4517633736_A_human-like_woman_based_on_the_uploaded_referenc_d7eb95ad-1711-4c60-ae75-bcaf6027f152_0 2.png" 
-                    alt="Gutter Fairy" 
-                    className="w-80 h-96 object-cover transition-all duration-500 group-hover:scale-110"
+                {/* Carousel Progress Bar */}
+                <div className="absolute bottom-2 left-4 right-4 h-1 bg-white/20 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-white transition-all duration-300 rounded-full"
+                    style={{ 
+                      width: `${(() => {
+                        let activeIndex = currentHeroIndex;
+                        if (currentHeroIndex === -1) activeIndex = heroImages.length - 1;
+                        if (currentHeroIndex === heroImages.length) activeIndex = 0;
+                        return ((activeIndex + 1) / heroImages.length) * 100;
+                      })()}%` 
+                    }}
                   />
-                  <div className="absolute inset-0 bg-gradient-to-t from-green-500/20 via-transparent to-cyan-500/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
                 </div>
               </div>
-
-              <div className="flex-shrink-0 group cursor-pointer">
-                <div className="relative overflow-hidden rounded-2xl bg-white/10 backdrop-blur-xl border border-white/20 shadow-xl">
-                  <img 
-                    src="/u4517633736_A_human-like_woman_based_on_the_uploaded_referenc_bee608ac-b150-4073-bb0a-c178876ac405_2.png" 
-                    alt="Gutter Fairy" 
-                    className="w-64 h-96 object-cover transition-all duration-500 group-hover:scale-110"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-yellow-500/20 via-transparent to-orange-500/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                </div>
-              </div>
-
-              <div className="flex-shrink-0 group cursor-pointer">
-                <div className="relative overflow-hidden rounded-3xl bg-white/10 backdrop-blur-xl border border-white/20 shadow-2xl">
-                  <img 
-                    src="/u4517633736_A_human-like_woman_based_on_the_uploaded_referenc_d7eb95ad-1711-4c60-ae75-bcaf6027f152_2 2.png" 
-                    alt="Gutter Fairy" 
-                    className="w-[550px] h-96 object-cover transition-all duration-500 group-hover:scale-110"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-indigo-500/20 via-transparent to-purple-500/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                </div>
-              </div>
-
-              <div className="flex-shrink-0 group cursor-pointer">
-                <div className="relative overflow-hidden rounded-2xl bg-white/10 backdrop-blur-xl border border-white/20 shadow-xl">
-                  <img 
-                    src="/u4517633736_A_human-like_woman_based_on_the_uploaded_referenc_afdaa008-1b02-4516-86b4-ea7126e9e773_0 2.png" 
-                    alt="Gutter Fairy" 
-                    className="w-76 h-96 object-cover transition-all duration-500 group-hover:scale-110"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-rose-500/20 via-transparent to-pink-500/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                </div>
-              </div>
-
-              {/* Product Images */}
-              <div className="flex-shrink-0 group cursor-pointer">
-                <div className="relative overflow-hidden rounded-3xl bg-white/10 backdrop-blur-xl border border-white/20 shadow-2xl">
-                  <img 
-                    src="/fuzzy_black_2_piece.png" 
-                    alt="Fuzzy Black 2-Piece" 
-                    className="w-[500px] h-96 object-cover transition-all duration-500 group-hover:scale-110"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-emerald-500/20 via-transparent to-teal-500/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                </div>
-              </div>
-
-              <div className="flex-shrink-0 group cursor-pointer">
-                <div className="relative overflow-hidden rounded-2xl bg-white/10 backdrop-blur-xl border border-white/20 shadow-xl">
-                  <img 
-                    src="/American Vintage Women's Brown and Tan Jacket .jpg" 
-                    alt="Vintage Jacket" 
-                    className="w-60 h-96 object-cover transition-all duration-500 group-hover:scale-110"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-violet-500/20 via-transparent to-purple-500/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                </div>
-              </div>
-
-              <div className="flex-shrink-0 group cursor-pointer">
-                <div className="relative overflow-hidden rounded-3xl bg-white/10 backdrop-blur-xl border border-white/20 shadow-2xl">
-                  <img 
-                    src="/Charter Club Women's multi Jacket .jpg" 
-                    alt="Multi Pattern Jacket" 
-                    className="w-[520px] h-96 object-cover transition-all duration-500 group-hover:scale-110"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-cyan-500/20 via-transparent to-blue-500/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                </div>
-              </div>
-
-              <div className="flex-shrink-0 group cursor-pointer">
-                <div className="relative overflow-hidden rounded-2xl bg-white/10 backdrop-blur-xl border border-white/20 shadow-xl">
-                  <img 
-                    src="/Eddie Bauer Women's multi Shirt .jpg" 
-                    alt="Multi Stripe Shirt" 
-                    className="w-72 h-96 object-cover transition-all duration-500 group-hover:scale-110"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-lime-500/20 via-transparent to-green-500/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                </div>
-              </div>
-
-              <div className="flex-shrink-0 group cursor-pointer">
-                <div className="relative overflow-hidden rounded-3xl bg-white/10 backdrop-blur-xl border border-white/20 shadow-2xl">
-                  <img 
-                    src="/Secret Treasures Women's Red Dress .jpg" 
-                    alt="Red Floral Dress" 
-                    className="w-[400px] h-96 object-cover transition-all duration-500 group-hover:scale-110"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-pink-500/20 via-transparent to-purple-500/20 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-                </div>
-              </div>
-
-              <div className="flex-shrink-0 group cursor-pointer">
-                <div className="relative overflow-hidden rounded-2xl bg-white/10 backdrop-blur-xl border border-white/20 shadow-xl">
-                  <img 
-                    src="/Women's multi Blouse.jpg" 
-                    alt="Floral Blouse" 
-                    className="w-80 h-96 object-cover transition-all duration-500 group-hover:scale-110"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-blue-500/20 via-transparent to-teal-500/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                </div>
-              </div>
-
-              <div className="flex-shrink-0 group cursor-pointer">
-                <div className="relative overflow-hidden rounded-3xl bg-white/10 backdrop-blur-xl border border-white/20 shadow-2xl">
-                  <img 
-                    src="/womens_multi_skirt.jpg" 
-                    alt="Plaid Skirt" 
-                    className="w-[450px] h-96 object-cover transition-all duration-500 group-hover:scale-110"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-purple-500/20 via-transparent to-pink-500/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                </div>
-              </div>
-
-              <div className="flex-shrink-0 group cursor-pointer">
-                <div className="relative overflow-hidden rounded-2xl bg-white/10 backdrop-blur-xl border border-white/20 shadow-xl">
-                  <img 
-                    src="/fairy.png" 
-                    alt="Gutter Fairy Logo" 
-                    className="w-64 h-96 object-cover transition-all duration-500 group-hover:scale-110"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-green-500/20 via-transparent to-cyan-500/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                </div>
-              </div>
-
-              {/* Duplicate the whole sequence for seamless looping */}
-              <div className="flex-shrink-0 group cursor-pointer">
-                <div className="relative overflow-hidden rounded-3xl bg-white/10 backdrop-blur-xl border border-white/20 shadow-2xl">
-                  <img 
-                    src="/u4517633736_A_human-like_woman_based_on_the_uploaded_referenc_1a904efb-fd57-4a13-986f-8eb5953d4a0e_2.png" 
-                    alt="Gutter Fairy" 
-                    className="w-[500px] h-96 object-cover transition-all duration-500 group-hover:scale-110"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-pink-500/20 via-transparent to-purple-500/20 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-                </div>
-              </div>
-            
-              <div className="flex-shrink-0 group cursor-pointer">
-                <div className="relative overflow-hidden rounded-2xl bg-white/10 backdrop-blur-xl border border-white/20 shadow-xl">
-                  <img 
-                    src="/u4517633736_A_human-like_woman_based_on_the_uploaded_referenc_afdaa008-1b02-4516-86b4-ea7126e9e773_3 2.png" 
-                    alt="Gutter Fairy" 
-                    className="w-72 h-96 object-cover transition-all duration-500 group-hover:scale-110"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-blue-500/20 via-transparent to-teal-500/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                </div>
-              </div>
-
-              <div className="flex-shrink-0 group cursor-pointer">
-                <div className="relative overflow-hidden rounded-3xl bg-white/10 backdrop-blur-xl border border-white/20 shadow-2xl">
-                  <img 
-                    src="/u4517633736_A_human-like_woman_based_on_the_uploaded_referenc_bee608ac-b150-4073-bb0a-c178876ac405_1.png" 
-                    alt="Gutter Fairy" 
-                    className="w-[600px] h-96 object-cover transition-all duration-500 group-hover:scale-110"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-purple-500/20 via-transparent to-pink-500/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                </div>
-              </div>
-
-              <div className="flex-shrink-0 group cursor-pointer">
-                <div className="relative overflow-hidden rounded-2xl bg-white/10 backdrop-blur-xl border border-white/20 shadow-xl">
-                  <img 
-                    src="/u4517633736_A_human-like_woman_based_on_the_uploaded_referenc_d7eb95ad-1711-4c60-ae75-bcaf6027f152_0 2.png" 
-                    alt="Gutter Fairy" 
-                    className="w-80 h-96 object-cover transition-all duration-500 group-hover:scale-110"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-green-500/20 via-transparent to-cyan-500/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                </div>
-              </div>
-
-              <div className="flex-shrink-0 group cursor-pointer">
-                <div className="relative overflow-hidden rounded-2xl bg-white/10 backdrop-blur-xl border border-white/20 shadow-xl">
-                  <img 
-                    src="/u4517633736_A_human-like_woman_based_on_the_uploaded_referenc_bee608ac-b150-4073-bb0a-c178876ac405_2.png" 
-                    alt="Gutter Fairy" 
-                    className="w-64 h-96 object-cover transition-all duration-500 group-hover:scale-110"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-yellow-500/20 via-transparent to-orange-500/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                </div>
-              </div>
-
             </div>
           </div>
+              </div>
 
-
-
-        </div>
+        {/* Gradient Transition to Products */}
+        <div className="absolute bottom-0 left-0 right-0 h-8 sm:h-32 z-20" style={{
+          background: 'linear-gradient(180deg, transparent 0%, #f8fafc 50%, #ecfdf5 100%)'
+        }}></div>
       </section>
 
-      {/* Products Section - Premium Grid with Magnetic Effects */}
-      <section id="products" className="min-h-[80vh] bg-gradient-to-br from-indigo-200 via-blue-200 via-blue-300 via-purple-200 to-purple-300 pt-8 pb-16 px-6 relative overflow-hidden">
-        {/* Curved Premium Transition */}
-        <div className="absolute top-0 left-0 right-0 h-40 bg-gradient-to-br from-blue-200 via-teal-300 to-emerald-200 transform -rotate-1 origin-top-right scale-110 shadow-2xl"></div>
-        
-        {/* Floating Glassmorphism Elements */}
-        <div className="absolute top-32 right-32 w-40 h-40 bg-white/10 backdrop-blur-xl rounded-3xl animate-pulse opacity-50 rotate-12"></div>
-        <div className="absolute bottom-40 left-32 w-56 h-56 bg-white/5 backdrop-blur-xl rounded-full animate-bounce opacity-30" style={{animationDuration: '4s'}}></div>
-        
-        {/* Premium Wave Transition */}
-        <div className="absolute bottom-0 left-0 right-0 h-48">
-          <svg viewBox="0 0 1200 120" preserveAspectRatio="none" className="w-full h-full">
-            <path d="M0,0V46.29c47.79,22.2,103.59,32.17,158,28,70.36-5.37,136.33-33.31,206.8-37.5C438.64,32.43,512.34,53.67,583,72.05c69.27,18,138.3,24.88,209.4,13.08,36.15-6,69.85-17.84,104.45-29.34C989.49,25,1113-14.29,1200,52.47V0Z" opacity=".3" fill="url(#gradient1)"></path>
-            <path d="M0,0V15.81C13,36.92,27.64,56.86,47.69,72.05,99.41,111.27,165,111,224.58,91.58c31.15-10.15,60.09-26.07,89.67-39.8,40.92-19,84.73-46,130.83-49.67,36.26-2.85,70.9,9.42,98.6,31.56,31.77,25.39,62.32,62,103.63,73,40.44,10.79,81.35-6.69,119.13-24.28s75.16-39,116.92-43.05c59.73-5.85,113.28,22.88,168.9,38.84,30.2,8.66,59,6.17,87.09-7.5,22.43-10.89,48-26.93,60.65-49.24V0Z" opacity=".6" fill="url(#gradient1)"></path>
-            <path d="M0,0V5.63C149.93,59,314.09,71.32,475.83,42.57c43-7.64,84.23-20.12,127.61-26.46,59-8.63,112.48,12.24,165.56,35.4C827.93,77.22,886,95.24,951.2,90c86.53-7,172.46-45.71,248.8-84.81V0Z" fill="url(#gradient1)"></path>
-            <defs>
-              <linearGradient id="gradient1" x1="0%" y1="0%" x2="0%" y2="100%">
-                <stop offset="0%" stopColor="rgb(168 85 247)" />
-                <stop offset="100%" stopColor="rgb(147 51 234)" />
-              </linearGradient>
-            </defs>
-          </svg>
-        </div>
-        
-        <div className="max-w-7xl mx-auto relative z-10">
-          
-          {/* Product Category Filters */}
+      {/* Products Section - Clean Premium Grid */}
+      <section id="products" className="min-h-[80vh] pt-0 pb-16 px-3 sm:px-6 relative overflow-hidden" style={{
+        background: 'linear-gradient(180deg, #ecfdf5 0%, #f0f9ff 20%, #faf5ff 40%, #f8fafc 60%, #ecfdf5 80%, #faf5ff 100%)'
+      }}>
+        <div className="max-w-7xl mx-auto relative z-10 pt-16">
+                    {/* Product Category Filters - Single Selection Only */}
           <div className="flex flex-wrap justify-center gap-2 sm:gap-4 mb-12">
-            {['ALL', 'TOPS', 'BOTTOMS', 'JUMPSUITS', 'VINTAGE COLLECTION', 'FOOTWEAR', 'HANDBAGS', 'ACCESSORIES'].map((filter) => (
-              <button 
-                key={filter}
-                onClick={() => setActiveFilter(filter)}
-                className={`px-3 py-2 sm:px-6 sm:py-3 text-xs sm:text-sm font-bold tracking-wide rounded-full border transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-105 ${
-                  activeFilter === filter
-                    ? 'bg-white/90 backdrop-blur-xl text-gray-900 border-white/30 hover:bg-white'
-                    : 'bg-white/10 backdrop-blur-xl text-white border-white/20 hover:bg-white/20'
-                }`}
-              >
-                {filter}
-              </button>
-            ))}
+            {['ALL', 'TOPS', 'BOTTOMS', 'JUMPSUITS', 'VINTAGE COLLECTION'].map((filter) => {
+              const isActive = activeFilter === filter;
+              return (
+                <button 
+                  key={`${filter}-${isActive}`} // Force re-render when active state changes
+                  onClick={() => {
+                    console.log(`Filter clicked: ${filter}, current active: ${activeFilter}`);
+                    handleFilterChange(filter);
+                  }}
+                  className={`px-3 py-2 sm:px-6 sm:py-3 text-xs sm:text-sm font-bold tracking-wide rounded-full border transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-105 relative overflow-hidden ${
+                    isActive
+                      ? 'text-gray-900 border-teal-300/50 ring-2 ring-teal-200/50'
+                      : 'text-gray-700 border-teal-200/30 hover:border-teal-300/50'
+                  }`}
+                  style={{
+                    background: isActive 
+                      ? 'linear-gradient(135deg, #ffffff 0%, #ecfdf5 30%, #a7f3d0 50%, #e9d5ff 70%, #ffffff 100%)'
+                      : 'linear-gradient(135deg, #ffffff/80 0%, #f0fdfa/60 30%, #f8fafc/60 70%, #ffffff/80 100%)'
+                  }}
+                >
+                  {filter} ({getProductCount(filter)})
+                </button>
+              );
+            })}
           </div>
+
+
           
                     {/* Premium Product Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                            {filteredProducts.map((item, index) => (
+                            {currentProducts.map((item, index) => (
                 <div key={index} className="group relative">
-                  {/* Magnetic Hover Effect Container */}
+                {/* Clean Product Card */}
                   <div 
-                    className="bg-white/95 backdrop-blur-xl rounded-3xl shadow-2xl overflow-hidden transform transition-all duration-700 hover:scale-105 hover:rotate-1 hover:shadow-4xl border border-white/20 group-hover:border-white/40 cursor-pointer"
+                  className="rounded-2xl shadow-xl overflow-hidden transform transition-all duration-700 hover:scale-105 hover:shadow-2xl border border-teal-200/30 group-hover:border-teal-400/60 cursor-pointer relative"
                     onClick={() => setModalProduct(item)}
+                  style={{
+                    background: 'linear-gradient(145deg, #ffffff 0%, #faf5ff 25%, #f8fafc 50%, #faf5ff 75%, #ffffff 100%)'
+                  }}
                   >
-                  {/* Premium Image Container */}
+                  {/* Product Image Container */}
                   <div className="relative aspect-square overflow-hidden">
                     <img 
                       src={item.images[currentImageIndex[item.id] || 0]}
@@ -641,14 +607,14 @@ export default function App() {
                       className="w-full h-full object-cover transition-all duration-700 group-hover:scale-110"
                     />
                     
-                    {/* Premium Gradient Overlay */}
+                    {/* Clean Gradient Overlay */}
                     <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
                     
-                    {/* Enhanced Image Navigation */}
+                    {/* Image Navigation */}
                     {item.images.length > 1 && (
                       <>
                         <button 
-                          className="absolute left-4 top-1/2 transform -translate-y-1/2 bg-white/90 backdrop-blur-xl hover:bg-white text-black w-14 h-14 rounded-full flex items-center justify-center shadow-2xl opacity-0 group-hover:opacity-100 transition-all duration-500 font-bold text-xl border border-white/30 hover:scale-110"
+                          className="absolute left-4 top-1/2 transform -translate-y-1/2 bg-white/90 backdrop-blur-xl hover:bg-white text-black w-12 h-12 rounded-full flex items-center justify-center shadow-2xl opacity-0 group-hover:opacity-100 transition-all duration-500 font-bold text-xl border border-white/30 hover:scale-110"
                           onClick={(e) => {
                             e.stopPropagation();
                             const current = currentImageIndex[item.id] || 0;
@@ -659,7 +625,7 @@ export default function App() {
                           ‹
                         </button>
                         <button 
-                          className="absolute right-4 top-1/2 transform -translate-y-1/2 bg-white/90 backdrop-blur-xl hover:bg-white text-black w-14 h-14 rounded-full flex items-center justify-center shadow-2xl opacity-0 group-hover:opacity-100 transition-all duration-500 font-bold text-xl border border-white/30 hover:scale-110"
+                          className="absolute right-4 top-1/2 transform -translate-y-1/2 bg-white/90 backdrop-blur-xl hover:bg-white text-black w-12 h-12 rounded-full flex items-center justify-center shadow-2xl opacity-0 group-hover:opacity-100 transition-all duration-500 font-bold text-xl border border-white/30 hover:scale-110"
                           onClick={(e) => {
                             e.stopPropagation();
                             const current = currentImageIndex[item.id] || 0;
@@ -670,7 +636,7 @@ export default function App() {
                           ›
                         </button>
                         
-                        {/* Premium Dots */}
+                        {/* Image Dots */}
                         <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 flex space-x-3">
                           {item.images.map((_, imgIndex) => (
                             <button
@@ -691,122 +657,192 @@ export default function App() {
                     )}
                   </div>
                   
-                  {/* Simplified Product Info */}
+                  {/* Product Info */}
                   <div className="p-6">
-                    <h1 className="text-xl font-black text-gray-900 mb-2 tracking-wide group-hover:text-purple-900 transition-colors duration-300">{item.name}</h1>
-                    <h2 className="text-lg font-bold bg-gradient-to-r from-blue-600 to-teal-600 bg-clip-text text-transparent mb-4">
+                    <h1 className="text-xl font-black text-gray-800 mb-2 tracking-wide group-hover:text-teal-600 transition-colors duration-300">{item.name}</h1>
+                    <h2 className="text-lg font-bold bg-gradient-to-r from-teal-500 to-purple-500 bg-clip-text text-transparent mb-4">
                       {item.price} • Size {item.size}
                     </h2>
                     
                     {/* Action Buttons */}
                     <div className="flex gap-3">
                       {/* Quick Buy Button */}
-                      <button 
-                        className="flex-1 relative overflow-hidden group/quickbuy bg-gradient-to-r from-gray-900 to-black text-white font-bold py-3 px-4 tracking-wide transition-all duration-500 shadow-lg hover:shadow-xl transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none rounded-xl border border-gray-700 hover:border-white/30 text-sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handlePurchase(item);
+                    <button 
+                        className="flex-1 relative overflow-hidden group/quickbuy text-white font-bold py-3 px-4 tracking-wide transition-all duration-500 shadow-lg hover:shadow-xl transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none rounded-xl border border-teal-400/30 hover:border-teal-300/50 text-sm"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handlePurchase(item);
+                      }}
+                      disabled={isPending}
+                        style={{
+                          background: 'linear-gradient(135deg, #0891b2 0%, #0d9488 30%, #7c3aed 70%, #0891b2 100%)'
                         }}
-                        disabled={isPending}
-                      >
-                        {/* Animated Background */}
-                        <div className="absolute inset-0 bg-gradient-to-r from-blue-500 via-teal-600 to-emerald-500 opacity-0 group-hover/quickbuy:opacity-100 transition-opacity duration-500"></div>
-                        
-                        {/* Button Content */}
-                        <div className="relative z-10 flex items-center justify-center">
-                          {isPending && selectedProduct?.id === item.id ? (
-                            <>
+                    >
+                        <div className="absolute inset-0 bg-gradient-to-r from-teal-400 via-purple-400 to-teal-500 opacity-0 group-hover/quickbuy:opacity-100 transition-opacity duration-500"></div>
+                      
+                      <div className="relative z-10 flex items-center justify-center">
+                        {isPending && selectedProduct?.id === item.id ? (
+                          <>
                               <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                              PROCESSING...
-                            </>
-                          ) : (
-                            <>
+                            PROCESSING...
+                          </>
+                        ) : (
+                          <>
                               <span className="group-hover/quickbuy:animate-pulse">QUICK BUY</span>
                               <span className="ml-2 opacity-0 group-hover/quickbuy:opacity-100 transition-opacity duration-300">⚡</span>
-                            </>
-                          )}
-                        </div>
-                      </button>
+                          </>
+                        )}
+                      </div>
+                    </button>
 
                       {/* Details Button */}
                       <button 
-                        className="flex-1 relative overflow-hidden group/details bg-white border-2 border-gray-300 text-gray-700 font-bold py-3 px-4 tracking-wide transition-all duration-500 shadow-lg hover:shadow-xl transform hover:scale-105 rounded-xl hover:border-purple-400 hover:text-purple-700 text-sm"
+                        className="flex-1 relative overflow-hidden group/details border-2 border-teal-200/50 text-gray-700 font-bold py-3 px-4 tracking-wide transition-all duration-500 shadow-lg hover:shadow-xl transform hover:scale-105 rounded-xl hover:border-teal-400 hover:text-teal-600 text-sm"
                         onClick={(e) => {
                           e.stopPropagation();
                           setModalProduct(item);
                         }}
+                        style={{
+                          background: 'linear-gradient(135deg, #ffffff 0%, #f8fafc 50%, #ffffff 100%)'
+                        }}
                       >
-                        {/* Hover Background */}
-                        <div className="absolute inset-0 bg-gradient-to-r from-blue-50 to-teal-50 opacity-0 group-hover/details:opacity-100 transition-opacity duration-500"></div>
+                        <div className="absolute inset-0 bg-gradient-to-r from-teal-50 to-purple-50 opacity-0 group-hover/details:opacity-100 transition-opacity duration-500"></div>
                         
-                        {/* Button Content */}
                         <div className="relative z-10 flex items-center justify-center">
                           <span className="group-hover/details:animate-pulse">DETAILS</span>
                           <span className="ml-2 opacity-0 group-hover/details:opacity-100 transition-opacity duration-300">👁️</span>
-                        </div>
-                      </button>
-                    </div>
-                  </div>
-                  </div>
+        </div>
+              </button>
+            </div>
+          </div>
+              </div>
+              </div>
+                          ))}
+            </div>
+
+            {/* Bottom Pagination Controls with Items Per Page */}
+            <div className="mt-12">
+              {/* Items Per Page Selector and Showing Info */}
+              <div className="flex flex-col sm:flex-row justify-between items-center gap-4 mb-6">
+                {/* Items Per Page Selector */}
+                <div className="flex items-center gap-3">
+                  <span className="text-sm font-medium text-gray-700">Show:</span>
+                  <select
+                    value={itemsPerPage}
+                    onChange={(e) => handleItemsPerPageChange(Number(e.target.value))}
+                    className="px-3 py-2 text-sm font-medium border border-teal-200/50 rounded-lg transition-all duration-300 hover:border-teal-300/50 focus:border-teal-400 focus:outline-none"
+                    style={{
+                      background: 'linear-gradient(135deg, #ffffff 0%, #f0fdfa 50%, #ffffff 100%)'
+                    }}
+                  >
+                    <option value={10}>10 items</option>
+                    <option value={20}>20 items</option>
+                    <option value={50}>50 items</option>
+                  </select>
                 </div>
-              ))}
+
+                {/* Showing Info */}
+                <span className="text-sm text-gray-600">
+                  Showing {startIndex + 1}-{Math.min(endIndex, totalItems)} of {totalItems} items
+                </span>
+              </div>
+
+              {/* Page Navigation */}
+              {totalPages > 1 && (
+                <div className="flex justify-center items-center gap-4">
+                  <button
+                    onClick={() => handlePageChange(Math.max(1, currentPage - 1))}
+                    disabled={currentPage === 1}
+                    className="px-4 py-2 text-sm font-medium border border-teal-200/50 rounded-lg transition-all duration-300 hover:border-teal-300/50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    style={{
+                      background: 'linear-gradient(135deg, #ffffff 0%, #f0fdfa 50%, #ffffff 100%)'
+                    }}
+                  >
+                    Previous
+                  </button>
+
+                  <div className="flex gap-1">
+                    {Array.from({ length: Math.min(7, totalPages) }, (_, i) => {
+                      let pageNumber;
+                      if (totalPages <= 7) {
+                        pageNumber = i + 1;
+                      } else if (currentPage <= 4) {
+                        pageNumber = i + 1;
+                      } else if (currentPage >= totalPages - 3) {
+                        pageNumber = totalPages - 6 + i;
+                      } else {
+                        pageNumber = currentPage - 3 + i;
+                      }
+
+                      return (
+                        <button
+                          key={pageNumber}
+                          onClick={() => handlePageChange(pageNumber)}
+                          className={`w-10 h-10 text-sm font-medium rounded-lg transition-all duration-300 ${
+                            currentPage === pageNumber
+                              ? 'text-white border-teal-400'
+                              : 'text-gray-700 border-teal-200/50 hover:border-teal-300/50'
+                          }`}
+                          style={{
+                            background: currentPage === pageNumber
+                              ? 'linear-gradient(135deg, #0891b2 0%, #0d9488 50%, #7c3aed 100%)'
+                              : 'linear-gradient(135deg, #ffffff 0%, #f0fdfa 50%, #ffffff 100%)'
+                          }}
+                        >
+                          {pageNumber}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <button
+                    onClick={() => handlePageChange(Math.min(totalPages, currentPage + 1))}
+                    disabled={currentPage === totalPages}
+                    className="px-4 py-2 text-sm font-medium border border-teal-200/50 rounded-lg transition-all duration-300 hover:border-teal-300/50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    style={{
+                      background: 'linear-gradient(135deg, #ffffff 0%, #f0fdfa 50%, #ffffff 100%)'
+                    }}
+                  >
+                    Next
+                  </button>
+                </div>
+              )}
             </div>
           </div>
       </section>
 
-
-      {/* Enhanced Footer Section */}
-      <footer className="bg-gradient-to-br from-teal-300 via-blue-200 to-emerald-300 text-gray-800 relative overflow-hidden">
-        {/* Magical Background Effects */}
-        <div className="absolute inset-0 pointer-events-none">
-          <div className="absolute top-10 left-10 w-32 h-32 bg-teal-500/10 rounded-full blur-xl animate-pulse"></div>
-          <div className="absolute bottom-20 right-20 w-40 h-40 bg-purple-500/10 rounded-full blur-xl animate-pulse" style={{animationDelay: '1s'}}></div>
-          <div className="absolute top-1/2 left-1/2 w-24 h-24 bg-blue-500/10 rounded-full blur-xl animate-pulse" style={{animationDelay: '2s'}}></div>
-        </div>
-
-        <div className="relative z-10 max-w-7xl mx-auto px-4 lg:px-8 py-16 lg:py-20">
-          {/* Newsletter Signup - Moved to Top */}
-          <div className="text-center max-w-2xl mx-auto mb-16">
-            <h4 className="text-xl font-bold mb-4 text-gray-800">Stay Magical ✨</h4>
-            <p className="text-gray-700 mb-6">Subscribe for exclusive vintage finds and sustainable fashion updates</p>
-            <div className="flex flex-col sm:flex-row gap-4 max-w-md mx-auto">
-                              <input 
-                  type="email" 
-                  placeholder="Enter your email"
-                  className="flex-1 px-4 py-3 rounded-full bg-white/70 backdrop-blur-xl border border-gray-300 text-gray-800 placeholder-gray-500 focus:outline-none focus:border-purple-400 transition-all duration-300"
-                />
-                <button className="px-6 py-3 rounded-full bg-gradient-to-r from-blue-400 to-teal-400 text-white font-bold hover:from-blue-500 hover:to-teal-500 transition-all duration-300 hover:scale-105 shadow-lg hover:shadow-xl">
-                Subscribe
-              </button>
+      {/* Clean Footer Section */}
+      <footer className="text-gray-800 relative overflow-hidden py-12" style={{
+        background: 'linear-gradient(180deg, #f8fafc 0%, #ecfdf5 30%, #e9d5ff 70%, #f8fafc 100%)'
+      }}>
+                        <div className="relative z-10 max-w-7xl mx-auto px-3 sm:px-4 lg:px-8">
+          {/* Made for sustainable fairies and Social Media Links */}
+          <div className="flex flex-col sm:flex-row justify-between items-center gap-4 mb-8">
+            <p className="text-lg font-bold text-gray-800">Made for sustainable fairies 🧚‍♀️♻️</p>
+            
+            <div className="flex items-center space-x-4">
+              <a href="https://www.instagram.com/gutterfairythrift/" target="_blank" rel="noopener noreferrer" className="w-8 h-8 lg:w-10 lg:h-10 rounded-full backdrop-blur-xl border border-teal-200/30 flex items-center justify-center transition-all duration-300 cursor-pointer group hover:scale-110 shadow-lg hover:shadow-xl relative overflow-hidden" style={{
+                background: 'linear-gradient(135deg, #ffffff 0%, #ecfdf5 30%, #faf5ff 70%, #ffffff 100%)'
+              }}>
+                <div className="absolute inset-0 bg-gradient-to-r from-teal-100/50 to-purple-100/50 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                <span className="relative z-10 text-xs lg:text-sm font-bold text-gray-800 group-hover:scale-110 transition-transform duration-300">IG</span>
+              </a>
+              <a href="https://www.tiktok.com/@gutterfairythrift" target="_blank" rel="noopener noreferrer" className="w-8 h-8 lg:w-10 lg:h-10 rounded-full backdrop-blur-xl border border-teal-200/30 flex items-center justify-center transition-all duration-300 cursor-pointer group hover:scale-110 shadow-lg hover:shadow-xl relative overflow-hidden" style={{
+                background: 'linear-gradient(135deg, #ffffff 0%, #faf5ff 30%, #ecfdf5 70%, #ffffff 100%)'
+              }}>
+                <div className="absolute inset-0 bg-gradient-to-r from-purple-100/50 to-teal-100/50 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                <span className="relative z-10 text-xs lg:text-sm font-bold text-gray-800 group-hover:scale-110 transition-transform duration-300">TT</span>
+              </a>
             </div>
           </div>
-
-
-
-          {/* Bottom Bar */}
-          <div className="pt-8 border-t border-white/10">
-            {/* Mobile Legal Links */}
-            <div className="flex justify-center items-center space-x-6 text-sm mb-4 md:hidden">
-              <a href="#" className="text-gray-600 hover:text-gray-800 transition-colors duration-300">
-                Privacy Policy
-              </a>
-              <a href="#" className="text-gray-600 hover:text-gray-800 transition-colors duration-300">
-                Terms of Service
-              </a>
-            </div>
             
-            {/* Copyright and Desktop Legal Links */}
-            <div className="flex flex-col md:flex-row justify-between items-center">
-              <div className="text-gray-600 text-sm mb-4 md:mb-0">
-                © 2024. All rights reserved. Made with 💜 for sustainable fashion.
-              </div>
-              <div className="hidden md:flex items-center space-x-6 text-sm">
-                <a href="#" className="text-gray-600 hover:text-gray-800 transition-colors duration-300">
-                  Privacy Policy
-                </a>
-                <a href="#" className="text-gray-600 hover:text-gray-800 transition-colors duration-300">
-                  Terms of Service
-                </a>
+                    {/* Footer Links */}
+          <div className="text-sm text-gray-600">
+            <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
+              <p>© 2024. All rights reserved.</p>
+              <div className="flex gap-4">
+                <a href="#" className="hover:text-teal-600 transition-colors duration-300">Privacy Policy</a>
+                <a href="#" className="hover:text-teal-600 transition-colors duration-300">Terms of Service</a>
               </div>
             </div>
           </div>
@@ -815,18 +851,23 @@ export default function App() {
 
       {/* Product Detail Modal */}
       {modalProduct && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100000] flex items-center justify-center p-4">
-          <div className="bg-white/95 backdrop-blur-xl rounded-3xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto border border-white/20">
+        <div className="fixed inset-0 bg-gray-800/50 backdrop-blur-sm z-[100000] flex items-center justify-center p-2 sm:p-4">
+          <div className="rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto border border-teal-200/40 relative" style={{
+            background: 'linear-gradient(145deg, #ffffff 0%, #faf5ff 20%, #f8fafc 40%, #faf5ff 60%, #ffffff 100%)'
+          }}>
             {/* Modal Header */}
             <div className="relative p-6 border-b border-gray-200">
               <button 
                 onClick={() => setModalProduct(null)}
-                className="absolute top-4 right-4 w-10 h-10 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-all duration-300 hover:scale-110"
+                className="absolute top-4 right-4 w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300 hover:scale-110 border border-teal-200/40 relative overflow-hidden"
+                style={{
+                  background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 50%, #e2e8f0 100%)'
+                }}
               >
                 <span className="text-gray-600 font-bold text-xl">×</span>
               </button>
-              <h2 className="text-2xl font-black text-gray-900 tracking-wide">{modalProduct.name}</h2>
-              <div className="text-3xl font-black bg-gradient-to-r from-blue-600 to-teal-600 bg-clip-text text-transparent mt-2">
+              <h2 className="text-2xl font-black text-gray-800 tracking-wide">{modalProduct.name}</h2>
+              <div className="text-3xl font-black bg-gradient-to-r from-teal-600 to-purple-600 bg-clip-text text-transparent mt-2">
                 {modalProduct.price}
               </div>
             </div>
@@ -889,47 +930,52 @@ export default function App() {
               <div className="space-y-6">
                 {/* Description */}
                 <div>
-                  <h3 className="text-lg font-bold text-gray-900 mb-3">Description</h3>
+                  <h3 className="text-lg font-bold text-gray-800 mb-3">Description</h3>
                   <p className="text-gray-600 leading-relaxed">{modalProduct.description}</p>
               </div>
 
                 {/* Size & Measurements */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
-                    <h3 className="text-lg font-bold text-gray-900 mb-3">Size</h3>
-                    <div className="bg-gray-100 rounded-full px-4 py-2 inline-block">
-                      <span className="text-sm font-bold text-gray-600">{modalProduct.size}</span>
+                    <h3 className="text-lg font-bold text-gray-800 mb-3">Size</h3>
+                    <div className="rounded-full px-4 py-2 inline-block" style={{
+                      background: 'linear-gradient(135deg, #ecfdf5 0%, #a7f3d0 50%, #e9d5ff 100%)'
+                    }}>
+                      <span className="text-sm font-bold text-gray-700">{modalProduct.size}</span>
               </div>
             </div>
                   
                   <div>
-                    <h3 className="text-lg font-bold text-gray-900 mb-3">Measurements</h3>
+                    <h3 className="text-lg font-bold text-gray-800 mb-3">Measurements</h3>
                     <p className="text-gray-600 text-sm leading-relaxed">{modalProduct.measurements}</p>
           </div>
                 </div>
 
                 {/* Category */}
                 <div>
-                  <h3 className="text-lg font-bold text-gray-900 mb-3">Category</h3>
-                  <div className="bg-gradient-to-r from-blue-100 to-teal-100 rounded-full px-4 py-2 inline-block">
-                    <span className="text-sm font-bold text-purple-700">{modalProduct.category}</span>
+                  <h3 className="text-lg font-bold text-gray-800 mb-3">Category</h3>
+                  <div className="rounded-full px-4 py-2 inline-block" style={{
+                    background: 'linear-gradient(135deg, #f0fdfa 0%, #a7f3d0 50%, #e9d5ff 100%)'
+                  }}>
+                    <span className="text-sm font-bold text-teal-800">{modalProduct.category}</span>
         </div>
                 </div>
 
                 {/* Action Buttons */}
                 <div className="flex flex-col sm:flex-row gap-4 pt-6">
                   <button 
-                    className="flex-1 relative overflow-hidden group/btn bg-gradient-to-r from-gray-900 to-black text-white font-black py-4 px-6 tracking-wider transition-all duration-500 shadow-2xl hover:shadow-4xl transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none rounded-2xl border border-gray-700 hover:border-white/30"
+                    className="flex-1 relative overflow-hidden group/btn text-white font-black py-4 px-6 tracking-wider transition-all duration-500 shadow-2xl hover:shadow-3xl transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none rounded-2xl border border-teal-400/30 hover:border-teal-300/50"
                     onClick={() => {
                       handlePurchase(modalProduct);
                       setModalProduct(null);
                     }}
                     disabled={isPending}
+                    style={{
+                      background: 'linear-gradient(135deg, #0891b2 0%, #0d9488 30%, #7c3aed 70%, #0891b2 100%)'
+                    }}
                   >
-                    {/* Animated Background */}
-                    <div className="absolute inset-0 bg-gradient-to-r from-blue-500 via-teal-600 to-emerald-500 opacity-0 group-hover/btn:opacity-100 transition-opacity duration-500"></div>
+                    <div className="absolute inset-0 bg-gradient-to-r from-teal-400 via-purple-400 to-teal-500 opacity-0 group-hover/btn:opacity-100 transition-opacity duration-500"></div>
                     
-                    {/* Button Content */}
                     <div className="relative z-10 flex items-center justify-center">
                       {isPending && selectedProduct?.id === modalProduct.id ? (
                         <>
@@ -947,7 +993,10 @@ export default function App() {
                   
                   <button 
                     onClick={() => setModalProduct(null)}
-                    className="px-6 py-4 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-2xl transition-all duration-300 hover:scale-105"
+                    className="px-6 py-4 text-gray-700 font-bold rounded-2xl transition-all duration-300 hover:scale-105 border border-teal-200/40"
+                    style={{
+                      background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 50%, #e2e8f0 100%)'
+                    }}
                   >
                     Close
                   </button>

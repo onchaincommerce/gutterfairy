@@ -12,8 +12,6 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { 
       toAddress, 
-      productId, 
-      productName,
       weight = 8 // Default weight in ounces for clothing items
     } = body;
 
@@ -68,7 +66,14 @@ export async function POST(request: NextRequest) {
     });
 
     // Format rates for frontend
-    const rates = shipment.rates.map((rate: any) => ({
+    const rates = shipment.rates.map((rate: {
+      id: string;
+      service: string;
+      carrier: string;
+      rate: string;
+      delivery_days?: number;
+      delivery_date?: string;
+    }) => ({
       id: rate.id,
       service: rate.service,
       carrier: rate.carrier,
@@ -91,27 +96,27 @@ export async function POST(request: NextRequest) {
       to_address: toAddress
     });
     
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('🚨 Shipping calculation error:', error);
     
     // Handle specific EasyPost errors
-    if (error.message?.includes('address')) {
+    if ((error as Error).message?.includes('address')) {
       return NextResponse.json({
         success: false,
         error: 'Invalid shipping address. Please check your address details.',
-        details: error.message
+        details: (error as Error).message
       }, { status: 400 });
     }
     
     return NextResponse.json({
       success: false,
       error: 'Failed to calculate shipping rates',
-      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+      details: process.env.NODE_ENV === 'development' ? (error as Error).message : undefined
     }, { status: 500 });
   }
 }
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   // Test endpoint to verify EasyPost connection
   try {
     // Test with a simple address verification
@@ -130,13 +135,13 @@ export async function GET(request: NextRequest) {
       timestamp: new Date().toISOString()
     });
     
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('🚨 EasyPost connection test failed:', error);
     
     return NextResponse.json({
       success: false,
       error: 'EasyPost API connection failed',
-      details: error.message,
+      details: (error as Error).message,
       timestamp: new Date().toISOString()
     }, { status: 500 });
   }

@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "db:init": "node scripts/init-db.js",
+    "db:seed": "node scripts/seed-products.js"
   },
   "dependencies": {
     "@coinbase/onchainkit": "latest",

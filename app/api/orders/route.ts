@@ -12,7 +12,6 @@ export async function POST(request: NextRequest) {
       shippingAddress,
       shippingCost,
       shippingMethod,
-      selectedRateId,
       transactionHash
     } = body;
 
@@ -80,13 +79,13 @@ export async function POST(request: NextRequest) {
       message: 'Order created successfully'
     });
     
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('🚨 Order creation error:', error);
     
     return NextResponse.json({
       success: false,
       error: 'Failed to create order',
-      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+      details: process.env.NODE_ENV === 'development' ? (error as Error).message : undefined
     }, { status: 500 });
   }
 }
@@ -130,13 +129,13 @@ export async function GET(request: NextRequest) {
       }))
     });
     
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('🚨 Orders fetch error:', error);
     
     return NextResponse.json({
       success: false,
       error: 'Failed to fetch orders',
-      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+      details: process.env.NODE_ENV === 'development' ? (error as Error).message : undefined
     }, { status: 500 });
   }
 } 

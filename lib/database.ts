@@ -2,6 +2,19 @@ import { sql } from '@vercel/postgres';
 
 // Database connection utility for Vercel Postgres
 
+export interface Address {
+  street1?: string;
+  street2?: string;
+  city?: string;
+  state?: string;
+  zip?: string;
+  country?: string;
+  line1?: string;
+  line2?: string;
+  admin_area_1?: string;
+  postal_code?: string;
+}
+
 export interface User {
   id: number;
   wallet_address: string;
@@ -13,7 +26,7 @@ export interface User {
 export interface UserProfile {
   id: number;
   user_id: number;
-  physical_address?: any;
+  physical_address?: Address;
   phone?: string;
   name?: string;
   created_at: Date;
@@ -43,7 +56,7 @@ export interface Order {
   product_id: number;
   product_name: string;
   product_price: number;
-  shipping_address?: any;
+  shipping_address?: Address;
   shipping_cost?: number;
   shipping_method?: string;
   tracking_number?: string;
@@ -78,7 +91,7 @@ export async function getUserByWallet(walletAddress: string): Promise<User | nul
 
 // Profile operations
 export async function createOrUpdateProfile(userId: number, profileData: {
-  physical_address?: any;
+  physical_address?: Address;
   phone?: string;
   name?: string;
 }): Promise<UserProfile> {
@@ -124,7 +137,7 @@ export async function createOrder(orderData: {
   product_id: number;
   product_name: string;
   product_price: number;
-  shipping_address?: any;
+  shipping_address?: Address;
   shipping_cost?: number;
   shipping_method?: string;
   total_amount: number;
