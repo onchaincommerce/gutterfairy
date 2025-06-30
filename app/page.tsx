@@ -15,6 +15,12 @@ import {
   Identity,
   EthBalance,
 } from '@coinbase/onchainkit/identity';
+import {
+  Checkout,
+  CheckoutButton,
+  CheckoutStatus,
+} from '@coinbase/onchainkit/checkout';
+import type { LifecycleStatus } from '@coinbase/onchainkit/checkout';
 import { useSendCalls, useAccount } from 'wagmi';
 import { base } from 'wagmi/chains';
 
@@ -31,7 +37,6 @@ interface ProductItem {
 }
 
 export default function App() {
-  const [selectedProduct, setSelectedProduct] = useState<ProductItem | null>(null);
   const [currentImageIndex, setCurrentImageIndex] = useState<{[key: string]: number}>({});
   const [activeFilter, setActiveFilter] = useState<string>('ALL');
   const [modalProduct, setModalProduct] = useState<ProductItem | null>(null);
@@ -41,7 +46,7 @@ export default function App() {
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [currentHeroIndex, setCurrentHeroIndex] = useState(0);
 
-  const { sendCalls, data, error, isPending } = useSendCalls();
+  const { sendCalls, data, error, isPending } = useSendCalls(); // Legacy - keeping for backwards compatibility
   const { isConnected } = useAccount();
 
   const heroImages = [
@@ -274,94 +279,79 @@ export default function App() {
     return `${baseUrl}/api/profiles/callback`;
   }
 
-  // Enhanced purchase function with better error handling
-  async function handlePurchase(product: ProductItem) {
-    if (!isConnected) {
-      alert("Connect your wallet first!");
-      return;
-    }
-
+  // Create charge handler for OnchainKit Checkout
+  const createChargeHandler = (product: ProductItem) => async (): Promise<string> => {
     try {
-      setSelectedProduct(product);
-      console.log(`Initiating purchase for ${product.name}`);
-
-      // Improved data callback configuration
-      const callbackConfig = {
-        requests: [
-          { 
-            type: "email" as const, 
-            optional: false,
-            description: "Email for order updates"
-          },
-          { 
-            type: "physicalAddress" as const, 
-            optional: false,
-            description: "Shipping address"
-          }
-        ],
-        callbackURL: getCallbackURL(),
-        version: "1.0"
-      };
-
-      console.log('Callback config:', callbackConfig);
-
-      // Send transaction with enhanced capabilities
-      // Note: This is still sending ETH - you'd need to integrate with USDC contract for real USDC payments
-      await sendCalls({
-        calls: [
-          {
-            to: "0xd8da6bf26964af9d7eed9e03e53415d37aa96045",
-            value: BigInt(product.priceInWei) * BigInt(1000000000000), // Convert USDC amount to wei equivalent for demo
-            data: "0x",
-          },
-        ],
-        chainId: base.id,
-        capabilities: {
-          dataCallback: callbackConfig,
+      const response = await fetch('/api/checkout/create-charge', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
         },
+        body: JSON.stringify({
+          productId: product.id,
+          productName: product.name,
+          amount: product.priceInWei,
+          currency: 'USDC',
+          metadata: {
+            productId: product.id,
+            size: product.size,
+            category: product.category,
+          }
+        }),
       });
 
-    } catch (err) {
-      console.error('Purchase failed:', err);
-      setSelectedProduct(null);
-      alert(`Transaction failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return data.id; // Return charge ID
+    } catch (error) {
+      console.error('Error creating charge:', error);
+      throw new Error('Failed to create charge');
     }
+  };
+
+  // Handle checkout status changes
+  const handleCheckoutStatus = (product: ProductItem) => (status: LifecycleStatus) => {
+    const { statusName, statusData } = status;
+    
+    switch (statusName) {
+      case 'success':
+        console.log('Payment successful!', statusData);
+        const { chargeId } = statusData;
+        alert(`Payment successful for ${product.name}! Order ID: ${chargeId}`);
+        break;
+      case 'pending':
+        console.log('Payment pending...', statusData);
+        break;
+      case 'error':
+        console.error('Payment error:', statusData);
+        alert('Payment failed. Please try again.');
+        break;
+      default:
+        console.log('Payment initialized');
+    }
+  };
+
+  // Legacy purchase function (now using OnchainKit Checkout)
+  // This function is kept for backwards compatibility if needed
+  async function handlePurchase(product: ProductItem) {
+    console.log('Legacy purchase function called - consider using OnchainKit Checkout instead');
+    alert('Please use the QUICK BUY or BUY NOW buttons for checkout');
   }
 
-  // Enhanced success handling
+  // Legacy transaction handling (now using OnchainKit Checkout)
+  // Keeping for backwards compatibility if needed
   useEffect(() => {
     if (data) {
-      console.log('Transaction successful:', data);
-      
-      // Check for profile data
-      const capabilities = data.capabilities;
-      if (capabilities?.dataCallback) {
-        console.log('Profile data collected:', capabilities.dataCallback);
-        alert("Purchase successful! Your data has been recorded. Check console for details.");
-      } else {
-        alert("Purchase successful!");
-      }
-      
-      setSelectedProduct(null);
+      console.log('Legacy transaction data:', data);
     }
   }, [data]);
 
-  // Enhanced error handling
   useEffect(() => {
     if (error) {
-      console.error('Transaction error details:', error);
-      setSelectedProduct(null);
-      
-      // More specific error messages
-      if (error.message.includes('User rejected')) {
-        alert("Transaction cancelled by user");
-      } else if (error.message.includes('insufficient funds')) {
-        alert("Insufficient funds for this purchase");
-      } else if (error.message.includes('400')) {
-        alert("Profile data collection failed - but your purchase may still be processing!");
-      } else {
-        alert(`Transaction failed: ${error.message}`);
-      }
+      console.log('Legacy transaction error:', error);
     }
   }, [error]);
 
@@ -444,7 +434,7 @@ export default function App() {
                 SUSTAINABLE FASHION
               </span>
             </h1>
-          </div>
+                </div>
 
           {/* Hero Carousel */}
           <div className="relative w-full flex justify-center">
@@ -469,7 +459,7 @@ export default function App() {
                         alt={heroImages[heroImages.length - 1].alt} 
                         className="w-full h-auto max-h-[200px] sm:max-h-[600px] object-cover transition-all duration-500"
                       />
-                    </div>
+              </div>
                     {/* Original images */}
                     {heroImages.map((image, index) => (
                       <div key={index} className="w-full flex-shrink-0">
@@ -478,7 +468,7 @@ export default function App() {
                           alt={image.alt} 
                           className="w-full h-auto max-h-[200px] sm:max-h-[600px] object-cover transition-all duration-500"
                         />
-                      </div>
+                </div>
                     ))}
                     {/* First image clone for seamless loop */}
                     <div className="w-full flex-shrink-0">
@@ -487,9 +477,9 @@ export default function App() {
                         alt={heroImages[0].alt} 
                         className="w-full h-auto max-h-[200px] sm:max-h-[600px] object-cover transition-all duration-500"
                       />
-                    </div>
-                  </div>
                 </div>
+                </div>
+              </div>
 
                 {/* Navigation Arrows */}
                 <button 
@@ -525,7 +515,7 @@ export default function App() {
                       />
                     );
                   })}
-                </div>
+              </div>
 
                 {/* Carousel Progress Bar */}
                 <div className="absolute bottom-2 left-4 right-4 h-1 bg-white/20 rounded-full overflow-hidden">
@@ -542,8 +532,8 @@ export default function App() {
                   />
                 </div>
               </div>
-            </div>
-          </div>
+                </div>
+                </div>
               </div>
 
         {/* Gradient Transition to Products */}
@@ -562,7 +552,7 @@ export default function App() {
             {['ALL', 'TOPS', 'BOTTOMS', 'JUMPSUITS', 'VINTAGE COLLECTION'].map((filter) => {
               const isActive = activeFilter === filter;
               return (
-                <button 
+              <button 
                   key={`${filter}-${isActive}`} // Force re-render when active state changes
                   onClick={() => {
                     console.log(`Filter clicked: ${filter}, current active: ${activeFilter}`);
@@ -580,7 +570,7 @@ export default function App() {
                   }}
                 >
                   {filter} ({getProductCount(filter)})
-                </button>
+              </button>
               );
             })}
           </div>
@@ -666,34 +656,17 @@ export default function App() {
                     
                     {/* Action Buttons */}
                     <div className="flex gap-3">
-                      {/* Quick Buy Button */}
-                    <button 
-                        className="flex-1 relative overflow-hidden group/quickbuy text-white font-bold py-3 px-4 tracking-wide transition-all duration-500 shadow-lg hover:shadow-xl transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none rounded-xl border border-teal-400/30 hover:border-teal-300/50 text-sm"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handlePurchase(item);
-                      }}
-                      disabled={isPending}
-                        style={{
-                          background: 'linear-gradient(135deg, #0891b2 0%, #0d9488 30%, #7c3aed 70%, #0891b2 100%)'
-                        }}
-                    >
-                        <div className="absolute inset-0 bg-gradient-to-r from-teal-400 via-purple-400 to-teal-500 opacity-0 group-hover/quickbuy:opacity-100 transition-opacity duration-500"></div>
-                      
-                      <div className="relative z-10 flex items-center justify-center">
-                        {isPending && selectedProduct?.id === item.id ? (
-                          <>
-                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                            PROCESSING...
-                          </>
-                        ) : (
-                          <>
-                              <span className="group-hover/quickbuy:animate-pulse">QUICK BUY</span>
-                              <span className="ml-2 opacity-0 group-hover/quickbuy:opacity-100 transition-opacity duration-300">⚡</span>
-                          </>
-                        )}
-                      </div>
-                    </button>
+                      {/* OnchainKit Checkout - Quick Buy */}
+                      <Checkout 
+                        chargeHandler={createChargeHandler(item)}
+                        onStatus={handleCheckoutStatus(item)}
+                      >
+                        <CheckoutButton 
+                          className="flex-1 relative overflow-hidden group/quickbuy text-white font-bold py-3 px-4 tracking-wide transition-all duration-500 shadow-lg hover:shadow-xl transform hover:scale-105 rounded-xl border border-teal-400/30 hover:border-teal-300/50 text-sm bg-gradient-to-r from-cyan-600 via-teal-600 to-purple-600"
+                          text="QUICK BUY ⚡"
+                        />
+                        <CheckoutStatus />
+                      </Checkout>
 
                       {/* Details Button */}
                       <button 
@@ -714,10 +687,10 @@ export default function App() {
         </div>
               </button>
             </div>
-          </div>
-              </div>
-              </div>
-                          ))}
+                  </div>
+                  </div>
+                </div>
+              ))}
             </div>
 
             {/* Bottom Pagination Controls with Items Per Page */}
@@ -739,13 +712,13 @@ export default function App() {
                     <option value={20}>20 items</option>
                     <option value={50}>50 items</option>
                   </select>
-                </div>
+          </div>
 
                 {/* Showing Info */}
                 <span className="text-sm text-gray-600">
                   Showing {startIndex + 1}-{Math.min(endIndex, totalItems)} of {totalItems} items
                 </span>
-              </div>
+        </div>
 
               {/* Page Navigation */}
               {totalPages > 1 && (
@@ -759,7 +732,7 @@ export default function App() {
                     }}
                   >
                     Previous
-                  </button>
+              </button>
 
                   <div className="flex gap-1">
                     {Array.from({ length: Math.min(7, totalPages) }, (_, i) => {
@@ -793,8 +766,8 @@ export default function App() {
                         </button>
                       );
                     })}
-                  </div>
-
+              </div>
+              
                   <button
                     onClick={() => handlePageChange(Math.min(totalPages, currentPage + 1))}
                     disabled={currentPage === totalPages}
@@ -805,7 +778,7 @@ export default function App() {
                   >
                     Next
                   </button>
-                </div>
+              </div>
               )}
             </div>
           </div>
@@ -834,7 +807,7 @@ export default function App() {
                 <span className="relative z-10 text-xs lg:text-sm font-bold text-gray-800 group-hover:scale-110 transition-transform duration-300">TT</span>
               </a>
             </div>
-          </div>
+            </div>
             
                     {/* Footer Links */}
           <div className="text-sm text-gray-600">
@@ -963,33 +936,23 @@ export default function App() {
 
                 {/* Action Buttons */}
                 <div className="flex flex-col sm:flex-row gap-4 pt-6">
-                  <button 
-                    className="flex-1 relative overflow-hidden group/btn text-white font-black py-4 px-6 tracking-wider transition-all duration-500 shadow-2xl hover:shadow-3xl transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none rounded-2xl border border-teal-400/30 hover:border-teal-300/50"
-                    onClick={() => {
-                      handlePurchase(modalProduct);
-                      setModalProduct(null);
-                    }}
-                    disabled={isPending}
-                    style={{
-                      background: 'linear-gradient(135deg, #0891b2 0%, #0d9488 30%, #7c3aed 70%, #0891b2 100%)'
+                  {/* OnchainKit Checkout - Buy Now */}
+                  <Checkout 
+                    chargeHandler={createChargeHandler(modalProduct)}
+                    onStatus={(status) => {
+                      handleCheckoutStatus(modalProduct)(status);
+                      if (status.statusName === 'success') {
+                        setModalProduct(null); // Close modal on successful purchase
+                      }
                     }}
                   >
-                    <div className="absolute inset-0 bg-gradient-to-r from-teal-400 via-purple-400 to-teal-500 opacity-0 group-hover/btn:opacity-100 transition-opacity duration-500"></div>
-                    
-                    <div className="relative z-10 flex items-center justify-center">
-                      {isPending && selectedProduct?.id === modalProduct.id ? (
-                        <>
-                          <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-3"></div>
-                          PROCESSING...
-                        </>
-                      ) : (
-                        <>
-                          <span className="group-hover/btn:animate-pulse">BUY NOW</span>
-                          <span className="ml-2 opacity-0 group-hover/btn:opacity-100 transition-opacity duration-300">✨</span>
-                        </>
-                      )}
-                    </div>
-                  </button>
+                    <CheckoutButton 
+                      className="flex-1 relative overflow-hidden group/btn text-white font-black py-4 px-6 tracking-wider transition-all duration-500 shadow-2xl hover:shadow-3xl transform hover:scale-105 rounded-2xl border border-teal-400/30 hover:border-teal-300/50 bg-gradient-to-r from-cyan-600 via-teal-600 to-purple-600"
+                      text="BUY NOW ✨"
+                      coinbaseBranded
+                    />
+                    <CheckoutStatus />
+                  </Checkout>
                   
                   <button 
                     onClick={() => setModalProduct(null)}
