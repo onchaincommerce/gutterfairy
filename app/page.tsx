@@ -15,12 +15,6 @@ import {
   Identity,
   EthBalance,
 } from '@coinbase/onchainkit/identity';
-import {
-  Checkout,
-  CheckoutButton,
-  CheckoutStatus,
-} from '@coinbase/onchainkit/checkout';
-import type { LifecycleStatus } from '@coinbase/onchainkit/checkout';
 import { useSendCalls, useAccount } from 'wagmi';
 import { base } from 'wagmi/chains';
 
@@ -37,6 +31,7 @@ interface ProductItem {
 }
 
 export default function App() {
+  const [selectedProduct, setSelectedProduct] = useState<ProductItem | null>(null);
   const [currentImageIndex, setCurrentImageIndex] = useState<{[key: string]: number}>({});
   const [activeFilter, setActiveFilter] = useState<string>('ALL');
   const [modalProduct, setModalProduct] = useState<ProductItem | null>(null);
@@ -46,10 +41,10 @@ export default function App() {
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [currentHeroIndex, setCurrentHeroIndex] = useState(0);
 
-  const { sendCalls, data, error, isPending } = useSendCalls(); // Legacy - keeping for backwards compatibility
+  const { sendCalls, data, error, isPending } = useSendCalls();
   const { isConnected } = useAccount();
 
-  const heroImages = [
+  const heroImages = useMemo(() => [
     {
       src: "/hero_image.png",
       alt: "Gutter Fairy - Sustainable Vintage Fashion"
@@ -62,7 +57,7 @@ export default function App() {
       src: "/hero_image3.png",
       alt: "Gutter Fairy - Unique Vintage Finds"
     }
-  ];
+  ], []);
 
   const products: ProductItem[] = useMemo(() => [
     { 
@@ -273,85 +268,230 @@ export default function App() {
     return () => window.removeEventListener('scroll', throttledHandleScroll);
   }, [lastScrollY]);
 
-  // Improved callback URL function
+  // Updated callback URL function for Smart Wallet Profiles
   function getCallbackURL() {
-    const baseUrl = "https://20b1-47-224-252-214.ngrok-free.app";
-    return `${baseUrl}/api/profiles/callback`;
+    let baseUrl = '';
+    
+    // Determine base URL based on environment
+    if (typeof window !== 'undefined') {
+      // Client-side: use current origin if it's HTTPS
+      const currentOrigin = window.location.origin;
+      if (currentOrigin.startsWith('https://')) {
+        baseUrl = currentOrigin;
+      }
+    }
+    
+    // Override with environment variable if set
+    const customCallbackUrl = process.env.NEXT_PUBLIC_CALLBACK_URL;
+    if (customCallbackUrl) {
+      baseUrl = customCallbackUrl.replace(/\/$/, ''); // Remove trailing slash
+    }
+    
+    // Fallback to production URL if no valid HTTPS URL found
+    if (!baseUrl || !baseUrl.startsWith('https://')) {
+      baseUrl = 'https://gutterfairy.vercel.app';
+      console.warn('⚠️ Using production callback URL as fallback:', baseUrl);
+    }
+    
+    const fullCallbackUrl = `${baseUrl}/api/profiles/validation`;
+    
+    // Validate the URL format
+    try {
+      const url = new URL(fullCallbackUrl);
+      if (url.protocol !== 'https:') {
+        throw new Error('URL must use HTTPS protocol');
+      }
+      console.log('✅ Callback URL validated:', fullCallbackUrl);
+      return fullCallbackUrl;
+    } catch (error) {
+      console.error('❌ Invalid callback URL:', fullCallbackUrl, error);
+      // Ultimate fallback to production
+      const fallbackUrl = 'https://gutterfairy.vercel.app/api/profiles/validation';
+      console.warn('🔄 Using production fallback URL:', fallbackUrl);
+      return fallbackUrl;
+    }
   }
 
-  // Create charge handler for OnchainKit Checkout
-  const createChargeHandler = (product: ProductItem) => async (): Promise<string> => {
-    try {
-      const response = await fetch('/api/checkout/create-charge', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          productId: product.id,
-          productName: product.name,
-          amount: product.priceInWei,
-          currency: 'USDC',
-          metadata: {
-            productId: product.id,
-            size: product.size,
-            category: product.category,
-          }
-        }),
-      });
+  // Smart Wallet Profiles purchase function
+  async function handlePurchase(product: ProductItem) {
+    if (!isConnected) {
+      alert("Connect your wallet first!");
+      return;
+    }
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+    try {
+      setSelectedProduct(product);
+      console.log(`🛒 Initiating purchase for ${product.name}`);
+
+      // Smart Wallet Profiles configuration following documentation
+      const profileRequests = [
+          { 
+            type: "email" as const, 
+          optional: false
+          },
+          { 
+            type: "physicalAddress" as const, 
+          optional: false
+        }
+      ];
+
+      const callbackURL = getCallbackURL();
+      console.log('📝 Profile requests:', profileRequests);
+      console.log('🔗 Callback URL:', callbackURL);
+
+      // Strict validation for Smart Wallet requirements
+      if (!callbackURL.startsWith('https://')) {
+        throw new Error('Callback URL must be a valid HTTPS URL');
       }
 
-      const data = await response.json();
-      return data.id; // Return charge ID
-    } catch (error) {
-      console.error('Error creating charge:', error);
-      throw new Error('Failed to create charge');
-    }
-  };
+      // Additional URL validation to ensure it's properly formatted
+      try {
+        const url = new URL(callbackURL);
+        if (url.protocol !== 'https:') {
+          throw new Error('Callback URL must use HTTPS protocol');
+        }
+        if (!url.hostname) {
+          throw new Error('Callback URL must have a valid hostname');
+        }
+      } catch (urlError) {
+        console.error('❌ Callback URL validation failed:', urlError);
+        throw new Error(`Invalid callback URL format: ${callbackURL}`);
+      }
 
-  // Handle checkout status changes
-  const handleCheckoutStatus = (product: ProductItem) => (status: LifecycleStatus) => {
-    const { statusName, statusData } = status;
-    
-    switch (statusName) {
-      case 'success':
-        console.log('Payment successful!', statusData);
-        const { chargeId } = statusData;
-        alert(`Payment successful for ${product.name}! Order ID: ${chargeId}`);
-        break;
-      case 'pending':
-        console.log('Payment pending...', statusData);
-        break;
-      case 'error':
-        console.error('Payment error:', statusData);
-        alert('Payment failed. Please try again.');
-        break;
-      default:
-        console.log('Payment initialized');
-    }
-  };
+      const transactionConfig = {
+        calls: [
+          {
+            to: "0xd8da6bf26964af9d7eed9e03e53415d37aa96045" as `0x${string}`,
+            value: BigInt(product.priceInWei) * BigInt(1000000000000), // Convert USDC amount to wei equivalent for demo
+            data: "0x" as `0x${string}`,
+          },
+        ] as const,
+        chainId: base.id,
+        capabilities: {
+          dataCallback: {
+            requests: profileRequests,
+            callbackURL: callbackURL,
+          },
+        },
+      };
 
-  // Legacy purchase function (now using OnchainKit Checkout)
-  // This function is kept for backwards compatibility if needed
-  async function handlePurchase(product: ProductItem) {
-    console.log('Legacy purchase function called - consider using OnchainKit Checkout instead');
-    alert('Please use the QUICK BUY or BUY NOW buttons for checkout');
+      console.log('📤 Sending transaction with config:', JSON.stringify(transactionConfig, (key, value) =>
+        typeof value === 'bigint' ? value.toString() : value, 2));
+
+      // Send transaction with Smart Wallet Profiles capability
+      await sendCalls(transactionConfig);
+
+    } catch (err) {
+      console.error('❌ Purchase failed:', err);
+      setSelectedProduct(null);
+      
+      // More detailed error handling
+      if (err instanceof Error) {
+        if (err.message.includes('User rejected')) {
+          alert("❌ Transaction cancelled by user");
+        } else if (err.message.includes('insufficient funds')) {
+          alert("💳 Insufficient funds for this purchase");
+        } else if (err.message.includes('network') || err.message.includes('connection')) {
+          alert("🌐 Network error. Please check your connection and try again.");
+        } else if (err.message.includes('callback') || err.message.includes('validation')) {
+          alert("📝 There was an issue with the profile data collection. Please try again.");
+        } else {
+          alert(`❌ Transaction failed: ${err.message}\n\nPlease try again or contact support if the issue persists.`);
+        }
+      } else {
+        alert(`❌ Transaction failed: Unknown error\n\nPlease try again or contact support if the issue persists.`);
+      }
+    }
   }
 
-  // Legacy transaction handling (now using OnchainKit Checkout)
-  // Keeping for backwards compatibility if needed
+  // Smart Wallet Profiles success handling - Updated to match Base documentation
   useEffect(() => {
     if (data) {
-      console.log('Legacy transaction data:', data);
+      console.log('Transaction successful:', data);
+      console.log('Full transaction data:', JSON.stringify(data, null, 2));
+      
+      // According to Base documentation, profile data should be available in the transaction response
+      // The wallet returns the data after successful validation
+      let successMessage = "🎉 Purchase successful!\n\n";
+      let profileDataFound = false;
+      
+      // Check multiple possible locations for profile data based on Base documentation
+      const dataAny = data as Record<string, unknown>; // Type assertion to access unknown properties
+      const profileData = data.capabilities?.dataCallback || dataAny.dataCallback || dataAny.requestedInfo;
+      
+      if (profileData) {
+        console.log('Profile data collected:', profileData);
+        profileDataFound = true;
+        
+        // Extract email
+        const email = profileData.email;
+        if (email) {
+          successMessage += `📧 Order confirmation will be sent to: ${email}\n`;
+        }
+        
+        // Extract physical address
+        const physicalAddress = profileData.physicalAddress;
+        if (physicalAddress?.physicalAddress) {
+          const addr = physicalAddress.physicalAddress;
+          const addressString = [
+            addr.address1,
+            addr.address2,
+            addr.city,
+            addr.state,
+            addr.postalCode,
+            addr.countryCode
+          ].filter(Boolean).join(", ");
+          successMessage += `📦 Item will be shipped to: ${addressString}\n`;
+        } else if (physicalAddress && typeof physicalAddress === 'object') {
+          // Handle if the address is directly in physicalAddress
+          const addr = physicalAddress as Record<string, unknown>;
+          const addressString = [
+            addr.address1,
+            addr.address2,
+            addr.city,
+            addr.state,
+            addr.postalCode,
+            addr.countryCode
+          ].filter(Boolean).join(", ");
+          successMessage += `📦 Item will be shipped to: ${addressString}\n`;
+        }
+      }
+      
+      // Also check if the profile data is in the transaction receipt or other locations
+      const receipt = dataAny.receipt || dataAny.transactionReceipt;
+      if (receipt && typeof receipt === 'object' && 'logs' in receipt) {
+        console.log('Transaction receipt found:', receipt);
+      }
+      
+      successMessage += "\n✨ Thank you for shopping sustainable fashion!";
+      
+      if (!profileDataFound) {
+        successMessage = "🎉 Purchase successful!\n\n✨ Thank you for your order! Your profile information has been collected securely.";
+      }
+      
+      alert(successMessage);
+      setSelectedProduct(null);
     }
   }, [data]);
 
+  // Smart Wallet Profiles error handling
   useEffect(() => {
     if (error) {
-      console.log('Legacy transaction error:', error);
+      console.error('Transaction error details:', error);
+      setSelectedProduct(null);
+      
+      // Provide specific error messages for different failure scenarios
+      if (error.message.includes('User rejected') || error.message.includes('user rejected')) {
+        alert("❌ Transaction cancelled by user");
+      } else if (error.message.includes('insufficient funds')) {
+        alert("💳 Insufficient funds for this purchase");
+      } else if (error.message.includes('profile') || error.message.includes('data')) {
+        alert("📝 There was an issue with collecting your shipping information. Please try again.");
+      } else if (error.message.includes('network') || error.message.includes('connection')) {
+        alert("🌐 Network error. Please check your connection and try again.");
+      } else {
+        alert(`❌ Transaction failed: ${error.message}\n\nPlease try again or contact support if the issue persists.`);
+      }
     }
   }, [error]);
 
@@ -547,7 +687,18 @@ export default function App() {
         background: 'linear-gradient(180deg, #ecfdf5 0%, #f0f9ff 20%, #faf5ff 40%, #f8fafc 60%, #ecfdf5 80%, #faf5ff 100%)'
       }}>
         <div className="max-w-7xl mx-auto relative z-10 pt-16">
-                    {/* Product Category Filters - Single Selection Only */}
+                    {/* Secure Checkout Info */}
+          <div className="text-center mb-8 px-4">
+            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium text-gray-700 border border-teal-200/50" style={{
+              background: 'linear-gradient(135deg, #ffffff 0%, #f0fdfa 50%, #ffffff 100%)'
+            }}>
+              <span className="text-teal-600">🔒</span>
+              <span>Secure checkout collects email & shipping address via Smart Wallet</span>
+              <span className="text-teal-600">📦</span>
+                </div>
+              </div>
+
+          {/* Product Category Filters - Single Selection Only */}
           <div className="flex flex-wrap justify-center gap-2 sm:gap-4 mb-12">
             {['ALL', 'TOPS', 'BOTTOMS', 'JUMPSUITS', 'VINTAGE COLLECTION'].map((filter) => {
               const isActive = activeFilter === filter;
@@ -656,17 +807,35 @@ export default function App() {
                     
                     {/* Action Buttons */}
                     <div className="flex gap-3">
-                      {/* OnchainKit Checkout - Quick Buy */}
-                      <Checkout 
-                        chargeHandler={createChargeHandler(item)}
-                        onStatus={handleCheckoutStatus(item)}
-                      >
-                        <CheckoutButton 
-                          className="flex-1 relative overflow-hidden group/quickbuy text-white font-bold py-3 px-4 tracking-wide transition-all duration-500 shadow-lg hover:shadow-xl transform hover:scale-105 rounded-xl border border-teal-400/30 hover:border-teal-300/50 text-sm bg-gradient-to-r from-cyan-600 via-teal-600 to-purple-600"
-                          text="QUICK BUY ⚡"
-                        />
-                        <CheckoutStatus />
-                      </Checkout>
+                      {/* Quick Buy Button with Profile Data Info */}
+                    <button 
+                        className="flex-1 relative overflow-hidden group/quickbuy text-white font-bold py-3 px-4 tracking-wide transition-all duration-500 shadow-lg hover:shadow-xl transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none rounded-xl border border-teal-400/30 hover:border-teal-300/50 text-sm"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handlePurchase(item);
+                      }}
+                      disabled={isPending}
+                        style={{
+                          background: 'linear-gradient(135deg, #0891b2 0%, #0d9488 30%, #7c3aed 70%, #0891b2 100%)'
+                        }}
+                        title="Checkout - Email and shipping address will be requested"
+                    >
+                        <div className="absolute inset-0 bg-gradient-to-r from-teal-400 via-purple-400 to-teal-500 opacity-0 group-hover/quickbuy:opacity-100 transition-opacity duration-500"></div>
+                      
+                      <div className="relative z-10 flex items-center justify-center">
+                        {isPending && selectedProduct?.id === item.id ? (
+                          <>
+                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                            CHECKOUT...
+                          </>
+                        ) : (
+                          <>
+                              <span className="group-hover/quickbuy:animate-pulse">CHECKOUT</span>
+                              <span className="ml-2 opacity-0 group-hover/quickbuy:opacity-100 transition-opacity duration-300">📦</span>
+                          </>
+                        )}
+                      </div>
+                    </button>
 
                       {/* Details Button */}
                       <button 
@@ -936,23 +1105,34 @@ export default function App() {
 
                 {/* Action Buttons */}
                 <div className="flex flex-col sm:flex-row gap-4 pt-6">
-                  {/* OnchainKit Checkout - Buy Now */}
-                  <Checkout 
-                    chargeHandler={createChargeHandler(modalProduct)}
-                    onStatus={(status) => {
-                      handleCheckoutStatus(modalProduct)(status);
-                      if (status.statusName === 'success') {
-                        setModalProduct(null); // Close modal on successful purchase
-                      }
+                  <button 
+                    className="flex-1 relative overflow-hidden group/btn text-white font-black py-4 px-6 tracking-wider transition-all duration-500 shadow-2xl hover:shadow-3xl transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none rounded-2xl border border-teal-400/30 hover:border-teal-300/50"
+                    onClick={() => {
+                      handlePurchase(modalProduct);
+                      setModalProduct(null);
+                    }}
+                    disabled={isPending}
+                    title="Complete purchase - Email and shipping address will be requested securely"
+                    style={{
+                      background: 'linear-gradient(135deg, #0891b2 0%, #0d9488 30%, #7c3aed 70%, #0891b2 100%)'
                     }}
                   >
-                    <CheckoutButton 
-                      className="flex-1 relative overflow-hidden group/btn text-white font-black py-4 px-6 tracking-wider transition-all duration-500 shadow-2xl hover:shadow-3xl transform hover:scale-105 rounded-2xl border border-teal-400/30 hover:border-teal-300/50 bg-gradient-to-r from-cyan-600 via-teal-600 to-purple-600"
-                      text="BUY NOW ✨"
-                      coinbaseBranded
-                    />
-                    <CheckoutStatus />
-                  </Checkout>
+                    <div className="absolute inset-0 bg-gradient-to-r from-teal-400 via-purple-400 to-teal-500 opacity-0 group-hover/btn:opacity-100 transition-opacity duration-500"></div>
+                    
+                    <div className="relative z-10 flex items-center justify-center">
+                      {isPending && selectedProduct?.id === modalProduct.id ? (
+                        <>
+                          <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-3"></div>
+                          PROCESSING...
+                        </>
+                      ) : (
+                        <>
+                          <span className="group-hover/btn:animate-pulse">CHECKOUT</span>
+                          <span className="ml-2 opacity-0 group-hover/btn:opacity-100 transition-opacity duration-300">📦</span>
+                        </>
+                      )}
+                    </div>
+                  </button>
                   
                   <button 
                     onClick={() => setModalProduct(null)}

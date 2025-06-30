@@ -19,29 +19,32 @@ interface Product {
 
 export default function AdminPanel() {
   const [products, setProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
 
-  const fetchProducts = async () => {
-    try {
-      const response = await fetch('/api/admin/products');
-      const data = await response.json();
-      if (data.success) {
-        setProducts(data.products);
-      }
-    } catch (error) {
-      console.error('Error fetching products:', error);
-    } finally {
-      setLoading(false);
+  // Mock data for now - will be replaced with Supabase later
+  const mockProducts: Product[] = [
+    {
+      id: 1,
+      name: "VINTAGE JACKET",
+      description: "Classic brown and tan leather jacket with vintage styling",
+      price_usdc: 45000000,
+      size: "Medium",
+      measurements: "Chest: 38\", Length: 24\", Sleeve: 23\"",
+      category: "TOPS",
+      images: ["/American Vintage Women's Brown and Tan Jacket .jpg"],
+      stock_quantity: 1,
+      is_active: true,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
     }
-  };
+  ];
 
   useEffect(() => {
-    fetchProducts();
-  }, []);
+    setProducts(mockProducts);
+  }, [mockProducts]);
 
-  const handleSaveProduct = async (productData: any) => {
+  const handleSaveProduct = async (productData: Record<string, unknown>) => {
     try {
       const isEditing = productData.id;
       const url = '/api/admin/products';
@@ -55,7 +58,7 @@ export default function AdminPanel() {
 
       const data = await response.json();
       if (data.success) {
-        fetchProducts(); // Refresh list
+        // Refresh list - will be implemented with Supabase later
         setEditingProduct(null);
         setShowAddForm(false);
         alert(isEditing ? 'Product updated!' : 'Product created!');
@@ -66,13 +69,7 @@ export default function AdminPanel() {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-600"></div>
-      </div>
-    );
-  }
+
 
   return (
     <div className="min-h-screen bg-gray-50 py-8">
@@ -190,7 +187,7 @@ function ProductForm({
   onCancel 
 }: { 
   product: Product | null;
-  onSave: (data: any) => void;
+  onSave: (data: Record<string, unknown>) => void;
   onCancel: () => void;
 }) {
   const [formData, setFormData] = useState({
