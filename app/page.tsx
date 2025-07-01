@@ -15,7 +15,8 @@ import {
   Identity,
   EthBalance,
 } from '@coinbase/onchainkit/identity';
-import { useSendCalls, useAccount } from 'wagmi';
+import { useSendCalls } from 'wagmi';
+import { useAccount } from 'wagmi';
 import { base } from 'wagmi/chains';
 
 interface ProductItem {
@@ -30,6 +31,17 @@ interface ProductItem {
   category: string;
 }
 
+interface AdminProduct {
+  name: string;
+  description: string;
+  price_usdc: string;
+  size: string;
+  measurements: string;
+  category: string;
+  images: string;
+  stock_quantity: string;
+}
+
 export default function App() {
   const [selectedProduct, setSelectedProduct] = useState<ProductItem | null>(null);
   const [currentImageIndex, setCurrentImageIndex] = useState<{[key: string]: number}>({});
@@ -40,9 +52,57 @@ export default function App() {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [currentHeroIndex, setCurrentHeroIndex] = useState(0);
+  
+  // Admin state
+  const [showAddProductModal, setShowAddProductModal] = useState(false);
+  const [adminFormData, setAdminFormData] = useState<AdminProduct>({
+    name: '',
+    description: '',
+    price_usdc: '',
+    size: '',
+    measurements: '',
+    category: '',
+    images: '',
+    stock_quantity: '0'
+  });
+  const [adminMessage, setAdminMessage] = useState<{type: 'success' | 'error', text: string} | null>(null);
 
   const { sendCalls, data, error, isPending } = useSendCalls();
-  const { isConnected } = useAccount();
+  const { address, isConnected } = useAccount();
+  
+  // Admin wallet address (lowercase for comparison)
+  const adminAddress = '0x9474fcc86224b8c614eee0096b4becfef244daf2';
+
+  // Robust admin check (always compare lowercased and trimmed)
+  const adminWalletCheck = isConnected && address && address.toLowerCase().trim() === adminAddress;
+
+  // Explicit debug for admin check
+  console.log('🔍 ADMIN CHECK DEBUG:', {
+    isConnected,
+    address,
+    adminAddress,
+    addressLower: address?.toLowerCase(),
+    addressTrimmed: address?.toLowerCase().trim(),
+    adminAddressTrimmed: adminAddress.trim(),
+    comparison: address?.toLowerCase().trim() === adminAddress.trim(),
+    adminWalletCheck,
+    // Additional debugging
+    addressLength: address?.toLowerCase().trim().length,
+    adminAddressLength: adminAddress.trim().length,
+    addressChars: address?.toLowerCase().trim().split(''),
+    adminAddressChars: adminAddress.trim().split(''),
+    addressCharCodes: address?.toLowerCase().trim().split('').map(c => c.charCodeAt(0)),
+    adminAddressCharCodes: adminAddress.trim().split('').map(c => c.charCodeAt(0)),
+  });
+
+  // Monitor wallet connection changes
+  useEffect(() => {
+    console.log('🔄 Wallet State Changed:', {
+      address,
+      isConnected,
+      timestamp: new Date().toISOString()
+    });
+  }, [address, isConnected]);
 
   const heroImages = useMemo(() => [
     {
@@ -495,7 +555,64 @@ export default function App() {
     }
   }, [error]);
 
-    return (
+  // Admin functions
+  const handleAdminSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    // Only allow admin wallet
+    if (!adminWalletCheck) {
+      setAdminMessage({ type: 'error', text: 'Only admin wallet can add products' });
+      return;
+    }
+
+    setAdminMessage(null);
+
+    try {
+      const productData = {
+        ...adminFormData,
+        images: adminFormData.images ? adminFormData.images.split(',').map(img => img.trim()) : []
+      };
+
+      const response = await fetch('/api/admin/products', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(productData),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setAdminMessage({ type: 'success', text: 'Product added successfully!' });
+        setAdminFormData({
+          name: '',
+          description: '',
+          price_usdc: '',
+          size: '',
+          measurements: '',
+          category: '',
+          images: '',
+          stock_quantity: '0'
+        });
+        // Close modal after 2 seconds on success
+        setTimeout(() => {
+          setShowAddProductModal(false);
+          setAdminMessage(null);
+        }, 2000);
+      } else {
+        setAdminMessage({ type: 'error', text: data.error || 'Failed to add product' });
+      }
+    } catch (err) {
+      setAdminMessage({ type: 'error', text: 'Failed to add product' });
+      console.error('Admin error:', err);
+    }
+  };
+
+  // Image upload function (for future use with Supabase Storage)
+  // TODO: Implement Supabase Storage upload
+  // This will be implemented when we set up Supabase Storage
+
+  return (
     <div className="min-h-screen relative overflow-hidden">
       {/* Clean Premium Header */}
       <header 
@@ -514,8 +631,14 @@ export default function App() {
                 GUTTER FAIRY
             </h1>
             </div>
-            
-            <div className="wallet-container relative">
+            <div className="wallet-container relative flex items-center gap-4">
+                            {/* Admin Status Indicator - Only show if admin wallet is connected */}
+              {adminWalletCheck && (
+                <div className="flex items-center gap-2 px-3 py-1 bg-green-500/20 backdrop-blur-xl rounded-full border border-green-300/30">
+                  <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                  <span className="text-xs font-medium text-green-200">ADMIN</span>
+                </div>
+              )}
               <Wallet>
                 <ConnectWallet 
                   className="relative overflow-hidden group bg-white/10 backdrop-blur-xl text-white px-4 lg:px-8 py-2 lg:py-3 font-bold tracking-wide transition-all duration-500 hover:scale-105 hover:shadow-2xl rounded-full border border-white/30 hover:border-white/50 hover:bg-white/20 text-sm lg:text-base"
@@ -541,6 +664,16 @@ export default function App() {
                     <Address className="!text-gray-800 !important" />
                     <EthBalance className="!text-gray-800 !important" />
                   </Identity>
+                  {/* Add Product Button - Only show for admin */}
+                  {adminWalletCheck && (
+                    <button
+                      onClick={() => setShowAddProductModal(true)}
+                      className="w-full text-left px-4 py-3 hover:bg-purple-100/80 text-gray-800 font-medium bg-transparent hover:bg-purple-100/80 rounded-xl mx-2 transition-all duration-300 flex items-center gap-3"
+                    >
+                      <span className="text-lg">✨</span>
+                      <span>Add Product</span>
+                    </button>
+                  )}
                   <WalletDropdownLink
                     icon="wallet"
                     href="https://keys.coinbase.com"
@@ -554,9 +687,170 @@ export default function App() {
                 </WalletDropdown>
               </Wallet>
             </div>
+          </div>
+        </div>
+      </header>
+
+            {/* Add Product Modal */}
+      {showAddProductModal && (
+        <div className="fixed inset-0 bg-gray-800/50 backdrop-blur-sm z-[100000] flex items-center justify-center p-4">
+          <div className="rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto border border-purple-200/40 relative" style={{
+            background: 'linear-gradient(145deg, #ffffff 0%, #faf5ff 20%, #f8fafc 40%, #faf5ff 60%, #ffffff 100%)'
+          }}>
+            {/* Modal Header */}
+            <div className="relative p-6 border-b border-gray-200">
+              <button 
+                onClick={() => setShowAddProductModal(false)}
+                className="absolute top-4 right-4 w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300 hover:scale-110 border border-purple-200/40 relative overflow-hidden"
+                style={{
+                  background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 50%, #e2e8f0 100%)'
+                }}
+              >
+                <span className="text-gray-600 font-bold text-xl">×</span>
+              </button>
+              <h2 className="text-2xl font-bold text-gray-800">🧚‍♀️ Add New Product</h2>
+              <p className="text-gray-600 mt-2">Add a new product to the Gutter Fairy collection</p>
+            </div>
+
+            {/* Modal Content */}
+            <div className="p-6">
+              {/* Admin Message */}
+              {adminMessage && (
+                <div className={`mb-6 p-4 rounded-lg ${
+                  adminMessage.type === 'success' 
+                    ? 'bg-green-100 border border-green-300 text-green-800' 
+                    : 'bg-red-100 border border-red-300 text-red-800'
+                }`}>
+                  {adminMessage.text}
+                </div>
+              )}
+              
+              {/* Add Product Form */}
+              <form onSubmit={handleAdminSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Product Name</label>
+                  <input
+                    type="text"
+                    value={adminFormData.name}
+                    onChange={(e) => setAdminFormData(prev => ({ ...prev, name: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    required
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Price (USDC)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={adminFormData.price_usdc}
+                    onChange={(e) => setAdminFormData(prev => ({ ...prev, price_usdc: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    required
+                  />
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
+                  <textarea
+                    value={adminFormData.description}
+                    onChange={(e) => setAdminFormData(prev => ({ ...prev, description: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    rows={3}
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Size</label>
+                  <input
+                    type="text"
+                    value={adminFormData.size}
+                    onChange={(e) => setAdminFormData(prev => ({ ...prev, size: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Category</label>
+                  <select
+                    value={adminFormData.category}
+                    onChange={(e) => setAdminFormData(prev => ({ ...prev, category: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    required
+                  >
+                    <option value="">Select Category</option>
+                    <option value="TOPS">TOPS</option>
+                    <option value="BOTTOMS">BOTTOMS</option>
+                    <option value="JUMPSUITS">JUMPSUITS</option>
+                  </select>
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Measurements</label>
+                  <input
+                    type="text"
+                    value={adminFormData.measurements}
+                    onChange={(e) => setAdminFormData(prev => ({ ...prev, measurements: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    placeholder="e.g., Chest: 38 inches, Length: 24 inches"
+                    required
+                  />
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Image URLs (comma-separated)</label>
+                  <input
+                    type="text"
+                    value={adminFormData.images}
+                    onChange={(e) => setAdminFormData(prev => ({ ...prev, images: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    placeholder="e.g., /image1.jpg, /image2.jpg"
+                    required
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    💡 Coming soon: Direct image upload to Supabase Storage
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Stock Quantity</label>
+                  <input
+                    type="number"
+                    value={adminFormData.stock_quantity}
+                    onChange={(e) => setAdminFormData(prev => ({ ...prev, stock_quantity: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    min="0"
+                    required
+                  />
+                </div>
+
+                {/* Action Buttons */}
+                <div className="md:col-span-2 flex gap-4 pt-6">
+                  <button
+                    type="submit"
+                    className="flex-1 bg-gradient-to-r from-purple-600 to-teal-600 text-white font-bold py-3 px-6 rounded-lg hover:from-purple-700 hover:to-teal-700 transition-all duration-300 transform hover:scale-105"
+                  >
+                    ✨ Add Product
+                  </button>
+                  
+                  <button 
+                    type="button"
+                    onClick={() => setShowAddProductModal(false)}
+                    className="px-6 py-3 text-gray-700 font-bold rounded-lg transition-all duration-300 hover:scale-105 border border-gray-300"
+                    style={{
+                      background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 50%, #e2e8f0 100%)'
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
-        </header>
+        </div>
+      )}
 
       {/* Hero Section - Clean Modern Style */}
       <section className="min-h-[50vh] sm:min-h-screen flex items-center justify-center relative overflow-hidden" style={{
